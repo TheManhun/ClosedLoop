@@ -8,6 +8,9 @@
     <p>This page will host the Closed Loop simulator interface.</p>
 
     <div class="simulator-root-wrapper" style="margin-top:1rem">
+        <div class="simulator-toolbar" aria-hidden="false">
+            <button id="place-process-unit-btn" class="toolbar-button" aria-pressed="false">Place Process Unit</button>
+        </div>
         <div id="simulator-root"></div>
     </div>
 @endsection

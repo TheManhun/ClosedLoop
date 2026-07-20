@@ -50,6 +50,15 @@ class PrototypeScene extends Phaser.Scene {
         this._selectionGraphics = this.add.graphics({ x: 0, y: 0 });
         this._hoverCell = null; // { ix, iy }
         this._selectedCell = null; // { ix, iy }
+        // Buildings placed in the scene keyed by "x,y"
+        this._buildings = new Map();
+        this._nextBuildingId = 1;
+        // Simple building definitions (kept small so Laravel can inject JSON later)
+        this._buildingDefs = {
+            processUnit: { key: 'process-unit', name: 'Process Unit' }
+        };
+        // Placement mode flag toggled by HTML toolbar button
+        this._placementMode = false;
         this._lastCamState = { x: null, y: null, zoom: null };
 
         // Bind drawGrid to the scene update loop — but only redraw when camera changes.
@@ -94,12 +103,23 @@ class PrototypeScene extends Phaser.Scene {
                 return;
             }
 
-            // Left-click selects a grid cell
+            // Left-click: either place a building (when in placement mode) or select a cell
             if (pointer.leftButtonDown()) {
                 const world = cam.getWorldPoint(pointer.x, pointer.y);
                 const gs = this._gridConfig;
                 const ix = Math.floor(world.x / gs.minor);
                 const iy = Math.floor(world.y / gs.minor);
+
+                if (this._placementMode) {
+                    const key = `${ix},${iy}`;
+                    if (!this._buildings.has(key)) {
+                        this._placeBuilding(ix, iy, 'processUnit');
+                    }
+                    // do not perform selection while placing
+                    return;
+                }
+
+                // Normal selection behavior when not placing
                 this._selectedCell = { ix, iy };
                 this._drawSelection();
             }
@@ -129,6 +149,31 @@ class PrototypeScene extends Phaser.Scene {
             cam.setZoom(1);
             cam.centerOn(this.titleText.x, this.titleText.y);
         });
+        // Hook up placement toolbar button (if present in the DOM)
+        const placeBtn = document.getElementById('place-process-unit-btn');
+        if (placeBtn) {
+            placeBtn.addEventListener('click', () => {
+                this._placementMode = !this._placementMode;
+                placeBtn.classList.toggle('active', this._placementMode);
+                placeBtn.setAttribute('aria-pressed', String(this._placementMode));
+                // refresh hover immediately so preview shows under pointer
+                if (this._placementMode) {
+                    this._updateHover(this.input.activePointer);
+                } else {
+                    this._hoverGraphics.clear();
+                }
+            });
+
+            // Exit placement mode on Escape
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && this._placementMode) {
+                    this._placementMode = false;
+                    placeBtn.classList.remove('active');
+                    placeBtn.setAttribute('aria-pressed', 'false');
+                    this._hoverGraphics.clear();
+                }
+            });
+        }
         }
 
         update() {
@@ -218,7 +263,6 @@ PrototypeScene.prototype._drawGrid = function (force) {
     PrototypeScene.prototype._updateHover = function (pointer) {
         const cam = this.cameras.main;
         const gs = this._gridConfig;
-
         // Convert screen pointer to world coordinates
         const world = cam.getWorldPoint(pointer.x, pointer.y);
         const ix = Math.floor(world.x / gs.minor);
@@ -233,7 +277,23 @@ PrototypeScene.prototype._drawGrid = function (force) {
 
         const g = this._hoverGraphics;
         g.clear();
-        // subtle fill for hover
+
+        // If placement mode active, show placement preview (valid vs invalid)
+        if (this._placementMode) {
+            const key = `${ix},${iy}`;
+            const occupied = this._buildings.has(key);
+            // valid: green translucent; invalid: red translucent
+            const fillColor = occupied ? 0xff0000 : 0x10b981;
+            const fillAlpha = occupied ? 0.16 : 0.18;
+            g.fillStyle(fillColor, fillAlpha);
+            g.fillRect(ix * gs.minor, iy * gs.minor, gs.minor, gs.minor);
+            // optional stroke for clarity
+            g.lineStyle(2, 0xffffff, 0.12);
+            g.strokeRect(ix * gs.minor + 1, iy * gs.minor + 1, gs.minor - 2, gs.minor - 2);
+            return;
+        }
+
+        // Default hover appearance when not placing: subtle fill
         const fillColor = 0xffffff;
         const fillAlpha = 0.08;
         g.fillStyle(fillColor, fillAlpha);
@@ -262,6 +322,35 @@ PrototypeScene.prototype._drawGrid = function (force) {
         g.lineStyle(strokeThickness, strokeColor, strokeAlpha);
         g.strokeRect(ix * gs.minor + 0.5, iy * gs.minor + 0.5, gs.minor - 1, gs.minor - 1);
     };
+
+// Place a building at grid coordinates ix,iy if unoccupied
+PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
+    const key = `${ix},${iy}`;
+    if (this._buildings.has(key)) {
+        return null;
+    }
+
+    const def = this._buildingDefs[defKey] || this._buildingDefs.processUnit;
+    const gs = this._gridConfig;
+    const id = this._nextBuildingId++;
+
+    // Create a container anchored at the top-left corner of the cell
+    const x = ix * gs.minor;
+    const y = iy * gs.minor;
+    const container = this.add.container(x, y);
+
+    // Rectangle centered inside the cell
+    const rect = this.add.rectangle(gs.minor / 2, gs.minor / 2, gs.minor - 6, gs.minor - 6, 0x1f2937);
+    rect.setStrokeStyle(2, 0xffffff, 0.12);
+    const label = this.add.text(gs.minor / 2, gs.minor / 2, def.name, { fontSize: '10px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
+
+    container.add([rect, label]);
+
+    const record = { id, type: def.name, gridX: ix, gridY: iy, container };
+    this._buildings.set(key, record);
+
+    return record;
+};
 
 
 const config = {

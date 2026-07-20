@@ -42,6 +42,36 @@ main {
     min-height: 0; /* allow flex child to shrink on overflow */
 }
 
+/* Make wrapper positioned so toolbar can overlay the simulator */
+.simulator-root-wrapper {
+    position: relative;
+}
+
+.simulator-toolbar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 20;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.simulator-toolbar .toolbar-button {
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.simulator-toolbar .toolbar-button.active,
+.simulator-toolbar .toolbar-button[aria-pressed="true"] {
+    background: #10b981; /* green when active */
+    color: #fff;
+    border-color: rgba(16,185,129,0.9);
+}
+
 #simulator-root {
     flex: 1 1 auto;
     width: 100%;
