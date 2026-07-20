@@ -45,6 +45,11 @@ class PrototypeScene extends Phaser.Scene {
 
         // Graphics object used to draw the grid. We clear and redraw it when camera moves/zooms.
         this._gridGraphics = this.add.graphics({ x: 0, y: 0 });
+        // Graphics for hover and selection (reused objects)
+        this._hoverGraphics = this.add.graphics({ x: 0, y: 0 });
+        this._selectionGraphics = this.add.graphics({ x: 0, y: 0 });
+        this._hoverCell = null; // { ix, iy }
+        this._selectedCell = null; // { ix, iy }
         this._lastCamState = { x: null, y: null, zoom: null };
 
         // Bind drawGrid to the scene update loop — but only redraw when camera changes.
@@ -75,13 +80,28 @@ class PrototypeScene extends Phaser.Scene {
             // Adjust camera scroll by the difference so the world point under the cursor remains stationary
             cam.scrollX += before.x - after.x;
             cam.scrollY += before.y - after.y;
+
+            // Update hover after zoom so highlight stays under pointer
+            this._updateHover(pointer);
         });
 
-        // Middle-button drag to pan
+        // Pointer down: middle-button drag to pan, left-click to select a cell
         this.input.on('pointerdown', (pointer) => {
+            // Middle-button starts camera drag
             if (pointer.middleButtonDown()) {
                 this._cameraControls.dragging = true;
                 this._cameraControls.dragStart = { x: pointer.x, y: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
+                return;
+            }
+
+            // Left-click selects a grid cell
+            if (pointer.leftButtonDown()) {
+                const world = cam.getWorldPoint(pointer.x, pointer.y);
+                const gs = this._gridConfig;
+                const ix = Math.floor(world.x / gs.minor);
+                const iy = Math.floor(world.y / gs.minor);
+                this._selectedCell = { ix, iy };
+                this._drawSelection();
             }
         });
 
@@ -99,6 +119,9 @@ class PrototypeScene extends Phaser.Scene {
                 cam.scrollX = start.scrollX - (pointer.x - start.x) / cam.zoom;
                 cam.scrollY = start.scrollY - (pointer.y - start.y) / cam.zoom;
             }
+
+            // Always update hover cell under pointer (keeps alignment while panning/zooming)
+            this._updateHover(pointer);
         });
 
         // Reset camera with R key: zoom 1 and center on the prototype text
@@ -190,6 +213,56 @@ PrototypeScene.prototype._drawGrid = function (force) {
 
     return true;
 };
+
+    // Update hover graphics for the cell under the given pointer
+    PrototypeScene.prototype._updateHover = function (pointer) {
+        const cam = this.cameras.main;
+        const gs = this._gridConfig;
+
+        // Convert screen pointer to world coordinates
+        const world = cam.getWorldPoint(pointer.x, pointer.y);
+        const ix = Math.floor(world.x / gs.minor);
+        const iy = Math.floor(world.y / gs.minor);
+
+        // If hover cell unchanged, nothing to do
+        if (this._hoverCell && this._hoverCell.ix === ix && this._hoverCell.iy === iy) {
+            return;
+        }
+
+        this._hoverCell = { ix, iy };
+
+        const g = this._hoverGraphics;
+        g.clear();
+        // subtle fill for hover
+        const fillColor = 0xffffff;
+        const fillAlpha = 0.08;
+        g.fillStyle(fillColor, fillAlpha);
+        g.fillRect(ix * gs.minor, iy * gs.minor, gs.minor, gs.minor);
+    };
+
+    // Draw (or clear) the selection rectangle based on _selectedCell
+    PrototypeScene.prototype._drawSelection = function () {
+        const gs = this._gridConfig;
+        const g = this._selectionGraphics;
+        g.clear();
+        if (!this._selectedCell) {
+            return;
+        }
+        const { ix, iy } = this._selectedCell;
+
+        // selection: semi-opaque fill + thin stroke
+        const fillColor = 0xffffff;
+        const fillAlpha = 0.16;
+        const strokeColor = 0xffffff;
+        const strokeAlpha = 0.28;
+        const strokeThickness = Math.max(1, gs.minorThickness);
+
+        g.fillStyle(fillColor, fillAlpha);
+        g.fillRect(ix * gs.minor, iy * gs.minor, gs.minor, gs.minor);
+        g.lineStyle(strokeThickness, strokeColor, strokeAlpha);
+        g.strokeRect(ix * gs.minor + 0.5, iy * gs.minor + 0.5, gs.minor - 1, gs.minor - 1);
+    };
+
 
 const config = {
     type: Phaser.AUTO,
