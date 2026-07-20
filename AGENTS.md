@@ -45,7 +45,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Documentation Files
 
-- You must only create documentation files if explicitly requested by the user.
+- Instead of saying "I'd create a new documentation file", say "Let's extend the existing AI guidance." Only create new documentation files if explicitly requested by the user.
 
 ## Replies
 
