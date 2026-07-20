@@ -5,12 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>@yield('title', 'Closed Loop')</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
-    <style>
-        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0}
-        header{background:#0f172a;color:#fff;padding:0.75rem}
-        nav a{color:#fff;margin-right:1rem;text-decoration:none}
-        main{padding:1.25rem}
-    </style>
+    <!-- styles moved to resources/css/app.css -->
 </head>
 <body>
     <header>
