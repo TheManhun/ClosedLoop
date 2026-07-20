@@ -159,4 +159,29 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
 - Do NOT delete tests without approval.
 
+## Closed Loop Architecture
+
+This application is an industrial sustainability simulator.
+
+### Responsibilities
+
+Laravel is responsible for:
+
+- Simulation
+- Resource calculations
+- Saving/loading
+- Business logic
+- APIs
+
+Phaser is responsible for:
+
+- Rendering
+- Camera
+- Input
+- Animation
+
+Never place simulation logic inside Phaser.
+
+Simulation calculations should remain framework-independent wherever possible.
+
 </laravel-boost-guidelines>
