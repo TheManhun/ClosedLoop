@@ -1,5 +1,7 @@
 # Closed Loop - Vision & Future Ideas
 
+"The purpose of Closed Loop is not to provide all the answers. It is to help people ask better questions."
+
 # Vision Statement
 
 The world's scientific and engineering knowledge is growing faster than any individual can absorb.
@@ -507,3 +509,13 @@ A practical first-stage research question for grant proposals is:
 > Can a multi-agent engineering assistant improve understanding and exploration of circular economy systems?
 
 An initial pilot can test this hypothesis with a small collection of specialists (for example: Waste, Energy, Water, Systems) and a basic Systems Engineer synthesiser. Demonstrating measurable improvement in design exploration, bottleneck identification and traceable recommendations provides evidence to scale the architecture and justify further investment.
+
+# Final thought
+
+Closed Loop is an investment in curiosity.
+
+It may help students discover a passion for engineering, assist researchers in exploring complex systems, support communities in understanding sustainable technologies, or simply encourage people to ask better questions.
+
+We cannot predict where the next breakthrough in circular economy thinking will come from.
+
+But we can build a place where more people have the opportunity to find it.

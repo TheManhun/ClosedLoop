@@ -8,6 +8,8 @@ class PrototypeScene extends Phaser.Scene {
     preload() {
         // Load building sprite into the texture manager. Public path is at /processingplant.png
         this.load.image('processingPlant', '/processingplant.png');
+        // Municipal Waste Collection sprite
+        this.load.image('trash', '/trash.png');
     }
 
     create() {
@@ -71,17 +73,37 @@ class PrototypeScene extends Phaser.Scene {
         this._buildings = new Map();
         this._nextBuildingId = 1;
         // Simple building definitions (kept small so Laravel can inject JSON later)
-        // Refactored shape: { name, image, category, footprint }
+        // Refactored shape: { name, image, category, footprint, permanent, deletable, movable, suggestedNext }
         this._buildingDefs = {
+            municipalWaste: {
+                name: 'Municipal Waste Collection',
+                image: 'trash',
+                category: 'resource',
+                footprint: [6, 6],
+                permanent: true,
+                deletable: false,
+                movable: false,
+                suggestedNext: [
+                    { defKey: 'sortingFacility', name: 'Sorting Facility' }
+                ]
+            },
             processUnit: {
                 name: 'Process Unit',
                 image: 'processingPlant',
                 category: 'processing',
-                footprint: [2, 2]
+                footprint: [2, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                suggestedNext: []
             }
         };
-        // Placement mode flag toggled by HTML toolbar button
+        // Placement mode flag toggled by toolbar selection
         this._placementMode = false;
+        // Currently selected placement definition key (e.g. 'municipalWaste' or 'processUnit')
+        this._placementDefKey = null;
+        // Track whether the initial municipal waste building has been placed
+        this._initialMunicipalPlaced = false;
         // Global toggle for showing building names
         this._showNames = false;
         // Currently hovered building record (used for temporary label visibility)
@@ -123,12 +145,14 @@ class PrototypeScene extends Phaser.Scene {
 
         // Pointer down: middle-button drag to pan, left-click may start a drag or select
         this.input.on('pointerdown', (pointer) => {
-            // Middle-button starts camera drag
-            if (pointer.middleButtonDown()) {
-                this._cameraControls.dragging = true;
-                this._cameraControls.dragStart = { x: pointer.x, y: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
-                return;
-            }
+                // Middle-button starts camera drag
+                if (pointer.middleButtonDown()) {
+                    this._cameraControls.dragging = true;
+                    this._cameraControls.dragStart = { x: pointer.x, y: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
+                    // hide context menu if visible when camera drag starts
+                    hideContextMenu();
+                    return;
+                }
 
             // Left-click: either place a building (when in placement mode) or start possible drag/select
             if (pointer.leftButtonDown()) {
@@ -138,7 +162,8 @@ class PrototypeScene extends Phaser.Scene {
                 const iy = Math.floor(world.y / gs.minor);
 
                 if (this._placementMode) {
-                    const def = this._buildingDefs.processUnit;
+                    const defKey = this._placementDefKey || 'processUnit';
+                    const def = this._buildingDefs[defKey];
                     const [fw, fh] = def.footprint;
                     // Check all cells in footprint for occupancy
                     let anyOccupied = false;
@@ -153,7 +178,7 @@ class PrototypeScene extends Phaser.Scene {
                         if (anyOccupied) break;
                     }
                     if (!anyOccupied) {
-                        this._placeBuilding(ix, iy, 'processUnit');
+                        this._placeBuilding(ix, iy, defKey);
                     }
                     // do not perform selection while placing
                     return;
@@ -163,6 +188,12 @@ class PrototypeScene extends Phaser.Scene {
                 const key = `${ix},${iy}`;
                 if (this._buildings.has(key)) {
                     const record = this._buildings.get(key);
+                    // If record is not movable, treat as selection only
+                    if (!record.movable) {
+                        this._selectedCell = { ix: record.gridX, iy: record.gridY };
+                        this._drawSelection();
+                        return;
+                    }
                     // Start drag state (not yet dragging until threshold exceeded)
                     this._dragState.active = true;
                     this._dragState.isDragging = false;
@@ -195,10 +226,10 @@ class PrototypeScene extends Phaser.Scene {
             if (pointer.leftButtonReleased()) {
                 if (this._dragState.active) {
                     const gs = this._gridConfig;
-                    const def = this._buildingDefs.processUnit;
+                    const record = this._dragState.record;
+                    const def = this._buildingDefs[record.defKey] || this._buildingDefs.processUnit;
                     const fw = def.footprint[0];
                     const fh = def.footprint[1];
-                    const record = this._dragState.record;
 
                     if (this._dragState.isDragging) {
                         // compute destination grid from container position (snapped during drag)
@@ -317,7 +348,7 @@ class PrototypeScene extends Phaser.Scene {
                     record.container.y = destIy * gs.minor;
 
                     // Validate footprint occupancy while ignoring the dragged record's current cells
-                    const def = this._buildingDefs.processUnit;
+                    const def = this._buildingDefs[record.defKey] || this._buildingDefs.processUnit;
                     const [fw, fh] = def.footprint;
                     let occupied = false;
                     for (let dx = 0; dx < fw; dx++) {
@@ -360,31 +391,45 @@ class PrototypeScene extends Phaser.Scene {
             cam.setZoom(1);
             cam.centerOn(this.titleText.x, this.titleText.y);
         });
-        // Hook up placement toolbar button (if present in the DOM)
-        const placeBtn = document.getElementById('place-process-unit-btn');
-        if (placeBtn) {
-            placeBtn.addEventListener('click', () => {
+        // Toolbar show/hide helpers
+        const toolbarEl = document.getElementById('simulator-toolbar');
+        function showToolbar() {
+            if (toolbarEl) toolbarEl.style.display = '';
+        }
+        function hideToolbar() {
+            if (toolbarEl) toolbarEl.style.display = 'none';
+        }
+        function toggleToolbar() {
+            if (!toolbarEl) return;
+            toolbarEl.style.display = toolbarEl.style.display === 'none' ? '' : 'none';
+        }
+
+        // Wire Process Unit placement button
+        const placeProcessBtn = document.getElementById('place-process-unit-btn');
+        if (placeProcessBtn) {
+            placeProcessBtn.addEventListener('click', () => {
+                // toggle placement mode specifically for processUnit
                 this._placementMode = !this._placementMode;
-                placeBtn.classList.toggle('active', this._placementMode);
-                placeBtn.setAttribute('aria-pressed', String(this._placementMode));
-                // refresh hover immediately so preview shows under pointer
+                this._placementDefKey = this._placementMode ? 'processUnit' : null;
+                placeProcessBtn.classList.toggle('active', this._placementMode);
+                placeProcessBtn.setAttribute('aria-pressed', String(this._placementMode));
                 if (this._placementMode) {
                     this._updateHover(this.input.activePointer);
                 } else {
                     this._hoverGraphics.clear();
                 }
             });
-
-            // Exit placement mode on Escape
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this._placementMode) {
-                    this._placementMode = false;
-                    placeBtn.classList.remove('active');
-                    placeBtn.setAttribute('aria-pressed', 'false');
-                    this._hoverGraphics.clear();
-                }
-            });
         }
+
+        // Exit placement mode on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this._placementMode) {
+                this._placementMode = false;
+                this._placementDefKey = null;
+                if (placeProcessBtn) { placeProcessBtn.classList.remove('active'); placeProcessBtn.setAttribute('aria-pressed', 'false'); }
+                this._hoverGraphics.clear();
+            }
+        });
 
         // Hook up Show Names toggle
         const showNamesBtn = document.getElementById('toggle-show-names-btn');
@@ -398,6 +443,158 @@ class PrototypeScene extends Phaser.Scene {
             });
             // ensure Escape handling does not toggle this control; no extra Escape logic needed here
         }
+
+        // Context menu implementation
+        const scene = this;
+        // Create context menu element
+        function createContextMenu() {
+            const el = document.createElement('div');
+            el.id = 'simulator-context-menu';
+            el.style.position = 'absolute';
+            el.style.background = '#0b1220';
+            el.style.color = '#fff';
+            el.style.border = '1px solid rgba(255,255,255,0.08)';
+            el.style.padding = '8px';
+            el.style.zIndex = 10000;
+            el.style.minWidth = '160px';
+            el.style.display = 'none';
+            el.style.fontSize = '13px';
+            el.style.boxShadow = '0 6px 18px rgba(2,6,23,0.7)';
+            document.body.appendChild(el);
+            return el;
+        }
+
+        if (!document.getElementById('simulator-context-menu')) {
+            this._contextMenuEl = createContextMenu();
+        } else {
+            this._contextMenuEl = document.getElementById('simulator-context-menu');
+        }
+
+        function hideContextMenu() {
+            if (scene._contextMenuEl) scene._contextMenuEl.style.display = 'none';
+        }
+
+        function clampMenuPosition(x, y, menuEl) {
+            const root = document.getElementById('simulator-root');
+            if (!root) return { x, y };
+            const rect = root.getBoundingClientRect();
+            const menuRect = menuEl.getBoundingClientRect();
+            let left = x;
+            let top = y;
+            if (left + menuRect.width > rect.right) {
+                left = Math.max(rect.left, rect.right - menuRect.width - 8);
+            }
+            if (top + menuRect.height > rect.bottom) {
+                top = Math.max(rect.top, rect.bottom - menuRect.height - 8);
+            }
+            // ensure within viewport too
+            left = Math.max(8, left);
+            top = Math.max(8, top);
+            return { x: left, y: top };
+        }
+
+        function handleSuggestedMachine(defKey) {
+            console.log('Suggested machine clicked:', defKey);
+            // placeholder: future hook
+        }
+
+        function showContextMenuFor(targetType, targetRecord, clientX, clientY) {
+            const el = scene._contextMenuEl;
+            el.innerHTML = '';
+            // Header / title
+            const title = document.createElement('div');
+            title.style.fontWeight = '600';
+            title.style.marginBottom = '6px';
+            if (targetType === 'municipalWaste') {
+                title.textContent = scene._buildingDefs.municipalWaste.name;
+            } else if (targetType === 'building' && targetRecord) {
+                title.textContent = targetRecord.type || 'Building';
+            } else {
+                title.textContent = '';
+            }
+            if (title.textContent) el.appendChild(title);
+
+            if (targetType === 'municipalWaste') {
+                const sugLabel = document.createElement('div');
+                sugLabel.style.marginBottom = '6px';
+                sugLabel.textContent = 'Suggested Next Machine';
+                el.appendChild(sugLabel);
+                const sug = document.createElement('button');
+                sug.textContent = 'Sorting Facility';
+                sug.style.display = 'block';
+                sug.style.width = '100%';
+                sug.style.marginBottom = '6px';
+                sug.onclick = () => handleSuggestedMachine('sorting-facility');
+                el.appendChild(sug);
+            } else if (targetType === 'building') {
+                const sugLabel = document.createElement('div');
+                sugLabel.style.marginBottom = '6px';
+                sugLabel.textContent = 'Suggested Next Machine';
+                el.appendChild(sugLabel);
+                const coming = document.createElement('div');
+                coming.textContent = 'Coming Soon';
+                coming.style.marginBottom = '6px';
+                el.appendChild(coming);
+            }
+
+            // Toolbar toggle
+            const toolbarBtn = document.createElement('button');
+            const toolbarVisible = toolbarEl && toolbarEl.style.display !== 'none';
+            toolbarBtn.textContent = toolbarVisible ? 'Hide Toolbar' : 'Show Toolbar';
+            toolbarBtn.onclick = () => {
+                if (toolbarVisible) hideToolbar(); else showToolbar();
+                hideContextMenu();
+            };
+            el.appendChild(toolbarBtn);
+
+            // Position and show
+            el.style.display = 'block';
+            // allow DOM to measure
+            requestAnimationFrame(() => {
+                const pos = clampMenuPosition(clientX, clientY, el);
+                el.style.left = pos.x + 'px';
+                el.style.top = pos.y + 'px';
+            });
+        }
+
+        // Disable native context menu inside simulator area and show custom menu
+        const rootEl = document.getElementById('simulator-root');
+        if (rootEl) {
+            rootEl.addEventListener('contextmenu', (ev) => {
+                ev.preventDefault();
+                const rect = rootEl.getBoundingClientRect();
+                const x = ev.clientX;
+                const y = ev.clientY;
+                // map to world to determine target
+                const world = cam.getWorldPoint((x - rect.left) , (y - rect.top));
+                const gs = this._gridConfig;
+                const ix = Math.floor(world.x / gs.minor);
+                const iy = Math.floor(world.y / gs.minor);
+                const key = `${ix},${iy}`;
+                if (this._buildings.has(key)) {
+                    const rec = this._buildings.get(key);
+                    if (rec && rec.defKey === 'municipalWaste') {
+                        showContextMenuFor('municipalWaste', rec, x, y);
+                        return;
+                    }
+                    showContextMenuFor('building', rec, x, y);
+                    return;
+                }
+                showContextMenuFor('ground', null, x, y);
+            });
+        }
+
+        // Close context menu on left-click elsewhere or Escape
+        document.addEventListener('pointerdown', (ev) => {
+            const el = scene._contextMenuEl;
+            if (!el) return;
+            if (ev.button === 0) {
+                if (!el.contains(ev.target)) hideContextMenu();
+            }
+        });
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') hideContextMenu();
+        });
 
         // Cancel an in-progress drag when Escape is pressed
         this.input.keyboard.on('keydown-ESC', () => {
@@ -426,6 +623,35 @@ class PrototypeScene extends Phaser.Scene {
                 if (drawn) {
                     this._gridHasRendered = true;
                 }
+            }
+            // Place the initial Municipal Waste Collection once after the first visible grid render
+            if (this._gridHasRendered && !this._initialMunicipalPlaced) {
+                const cam = this.cameras.main;
+                const gs = this._gridConfig;
+                const view = cam.worldView;
+                const def = this._buildingDefs.municipalWaste;
+                const fw = def.footprint[0];
+                const fh = def.footprint[1];
+                // compute top-center origin (a few rows below top)
+                const centerX = view.x + view.width / 2;
+                const ix = Math.floor(centerX / gs.minor) - Math.floor(fw / 2);
+                const iy = Math.floor((view.y + gs.minor * 1.5) / gs.minor);
+                // ensure no duplicate and reserve cells
+                // If any municipalWaste already exists, skip
+                let exists = false;
+                for (const rec of this._buildings.values()) {
+                    if (rec && rec.defKey === 'municipalWaste') { exists = true; break; }
+                }
+                if (!exists) {
+                    const rec = this._placeBuilding(ix, iy, 'municipalWaste');
+                    if (rec) {
+                        // apply permanent/movable flags from def
+                        rec.permanent = def.permanent === true;
+                        rec.deletable = def.deletable !== false;
+                        rec.movable = def.movable !== false;
+                    }
+                }
+                this._initialMunicipalPlaced = true;
             }
         }
 }
@@ -523,7 +749,7 @@ PrototypeScene.prototype._drawGrid = function (force) {
 
         // If placement mode active, show placement preview (valid vs invalid)
         if (this._placementMode) {
-            const def = this._buildingDefs.processUnit;
+            const def = this._buildingDefs[this._placementDefKey || 'processUnit'];
             const [fw, fh] = def.footprint;
             // Check if any of the footprint cells are occupied
             let occupied = false;
@@ -684,7 +910,19 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
 
     container.add([img, label]);
 
-    const record = { id, type: def.name, gridX: ix, gridY: iy, container, label };
+    const record = {
+        id,
+        type: def.name,
+        defKey,
+        gridX: ix,
+        gridY: iy,
+        container,
+        label,
+        permanent: def.permanent === true,
+        deletable: def.deletable !== false,
+        movable: def.movable !== false,
+        suggestedNext: def.suggestedNext || []
+    };
 
     // Reserve all footprint cells in the occupancy map pointing to the same record
     for (let dx = 0; dx < fw; dx++) {

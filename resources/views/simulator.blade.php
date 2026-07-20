@@ -8,8 +8,10 @@
     <p>This page will host the Closed Loop simulator interface.</p>
 
     <div class="simulator-root-wrapper" style="margin-top:1rem">
-        <div class="simulator-toolbar" aria-hidden="false">
-            <button id="place-process-unit-btn" class="toolbar-button" aria-pressed="false">Place Process Unit</button>
+        <div class="simulator-toolbar" aria-hidden="false" style="display:none" id="simulator-toolbar">
+            <div class="simulator-palette" role="toolbar" aria-label="Building palette">
+                <button id="place-process-unit-btn" class="toolbar-button" aria-pressed="false">Process Unit</button>
+            </div>
             <button id="toggle-show-names-btn" class="toolbar-button" aria-pressed="false">Show Names</button>
         </div>
         <div id="simulator-root"></div>
