@@ -56,6 +56,104 @@ main {
     gap: 0.5rem;
 }
 
+/* Unresolved Outputs panel overlay */
+.unresolved-output-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 300px;
+    max-width: calc(100% - 32px);
+    z-index: 10050; /* above toolbar and canvas */
+    background: rgba(3,7,18,0.78);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(2,6,23,0.7);
+    pointer-events: auto;
+    font-size: 13px;
+}
+.unresolved-output-body {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+.unresolved-output-chart {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    flex: 0 0 160px;
+}
+.unresolved-output-chart svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+.unresolved-output-total {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+}
+.unresolved-output-total strong {
+    display: block;
+    font-size: 20px;
+    color: #fff;
+}
+.unresolved-output-total span {
+    display: block;
+    font-size: 11px;
+    color: rgba(255,255,255,0.75);
+}
+.unresolved-output-legend {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.unresolved-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px;
+    border-top: 1px solid rgba(255,255,255,0.02);
+}
+.unresolved-legend-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex: 0 0 14px;
+}
+.unresolved-legend-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.unresolved-legend-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.unresolved-legend-details {
+    font-size: 12px;
+    color: rgba(255,255,255,0.8);
+    margin-top: 4px;
+}
+.unresolved-legend-meta {
+    margin-left: auto;
+    text-align: right;
+    font-size: 12px;
+    color: rgba(255,255,255,0.8);
+}
+/* header and phase badges removed per user request */
+
+@media (max-width: 640px) {
+    .unresolved-output-panel { right: 8px; top: 8px; width: 260px; }
+    .unresolved-output-chart { width: 140px; height: 140px; flex: 0 0 140px; }
+}
+
 .simulator-toolbar .toolbar-button {
     background: rgba(255,255,255,0.06);
     color: #fff;

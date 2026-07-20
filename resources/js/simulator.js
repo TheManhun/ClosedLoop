@@ -20,6 +20,8 @@ class PrototypeScene extends Phaser.Scene {
             fontSize: '32px',
             color: '#ffffff'
         }).setOrigin(0.5);
+        // Expose scene for debug hooks (used by chart/UI rendering)
+        try { window.__simulatorScene = this; } catch (e) {}
 
         const cam = this.cameras.main;
 
@@ -73,42 +75,172 @@ class PrototypeScene extends Phaser.Scene {
         this._buildings = new Map();
         this._nextBuildingId = 1;
         // Simple building definitions (kept small so Laravel can inject JSON later)
-        // Refactored shape: { name, image, category, footprint, permanent, deletable, movable, suggestedNext }
+        // Refactored shape: { name, image, category, footprint, permanent, deletable, movable, suggestedNext, placeable }
         this._buildingDefs = {
             municipalWaste: {
-                name: 'Municipal Waste Collection',
+                name: 'Municipal Waste',
+                // use the original trash sprite so Municipal Waste appears as before
                 image: 'trash',
-                category: 'resource',
-                footprint: [6, 6],
+                category: 'source',
+                footprint: [4, 4],
                 permanent: true,
                 deletable: false,
-                movable: false,
-                suggestedNext: [
-                    { defKey: 'sortingFacility', name: 'Sorting Facility' }
-                ]
+                movable: true,
+                placeable: false,
+                shortCode: 'MW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
+            technologyWaste: {
+                name: 'Technology Waste',
+                image: 'src_tw',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'TW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            farmWaste: {
+                name: 'Farm Waste',
+                image: 'src_fw',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'FW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            industrialWaste: {
+                name: 'Industrial Waste',
+                image: 'src_iw',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'IW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            buildingWaste: {
+                name: 'Building Waste',
+                image: 'src_bw',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'BW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            sewerage: {
+                name: 'Sewerage',
+                image: 'src_sw',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'SW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            // Existing process unit
             processUnit: {
                 name: 'Process Unit',
                 image: 'processingPlant',
-                category: 'processing',
+                category: 'process',
                 footprint: [2, 2],
                 permanent: false,
                 deletable: true,
                 movable: true,
+                placeable: true,
+                suggestedNext: []
+            },
+            sortingFacility: {
+                name: 'Sorting Facility',
+                image: 'sorting_facility',
+                category: 'process',
+                footprint: [3, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                placeable: true,
+                suggestedNext: []
+            }
+            ,
+            externalGrid: {
+                name: 'External Grid',
+                image: 'external_grid',
+                category: 'infrastructure',
+                footprint: [3, 2],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'GRID',
                 suggestedNext: []
             }
         };
+        // Generate simple placeholder textures for sources and sorting facility
+        (function generatePlaceholders(scene) {
+            const map = {
+                src_mw: '#10b981',
+                src_tw: '#3b82f6',
+                src_fw: '#f59e0b',
+                src_iw: '#ef4444',
+                src_bw: '#8b5cf6',
+                src_sw: '#06b6d4',
+                sorting_facility: '#0b1220'
+                ,
+                external_grid: '#111827'
+            };
+            Object.keys(map).forEach((key) => {
+                const color = map[key];
+                const g = scene.add.graphics();
+                const w = 128, h = 96, r = 8;
+                g.fillStyle(parseInt(color.replace('#',''), 16), 1);
+                g.fillRoundedRect(0, 0, w, h, r);
+                g.lineStyle(2, 0xffffff, 0.06);
+                g.strokeRoundedRect(0, 0, w, h, r);
+                g.generateTexture(key, w, h);
+                g.destroy();
+            });
+        })(this);
         // Placement mode flag toggled by toolbar selection
         this._placementMode = false;
         // Currently selected placement definition key (e.g. 'municipalWaste' or 'processUnit')
         this._placementDefKey = null;
-        // Track whether the initial municipal waste building has been placed
-        this._initialMunicipalPlaced = false;
+        // Track whether the initial permanent source buildings have been placed
+        this._initialSourcesPlaced = false;
         // Global toggle for showing building names
         this._showNames = false;
         // Currently hovered building record (used for temporary label visibility)
         this._hoveredRecord = null;
         this._lastCamState = { x: null, y: null, zoom: null };
+
+        // Scene-wide settings and visual systems
+        this._sceneSettings = {
+            showMachineStatusColours: true
+        };
+
+        // Status colour palette for machine status backgrounds
+        this._statusColours = {
+            working: { colour: 0x39a96b, alpha: 0.20 },
+            fault: { colour: 0xd64545, alpha: 0.20 },
+            neutral: { colour: null, alpha: 0 }
+        };
+
+        // Power cable storage
+        this._powerCables = new Map();
+
+        // Hub power state (placeholder/debug)
+        this._hubPowerState = { mode: 'import', importMW: 12.6, exportMW: 0, netMW: -12.6 };
 
         // Bind drawGrid to the scene update loop — but only redraw when camera changes.
         this.events.on('postupdate', this._drawGrid, this);
@@ -280,6 +412,8 @@ class PrototypeScene extends Phaser.Scene {
                             // keep selection on new origin
                             this._selectedCell = { ix: destIx, iy: destIy };
                             this._drawSelection();
+                            // Notify cable system that this building moved so cables redraw
+                            if (typeof this._updateCablesForRecord === 'function') this._updateCablesForRecord(record);
                         } else {
                             // invalid move: return to original position
                             record.container.x = this._dragState.origGrid.x * gs.minor;
@@ -421,6 +555,22 @@ class PrototypeScene extends Phaser.Scene {
             });
         }
 
+        // Wire Sorting Facility placement button
+        const placeSortingBtn = document.getElementById('place-sorting-facility-btn');
+        if (placeSortingBtn) {
+            placeSortingBtn.addEventListener('click', () => {
+                this._placementMode = !this._placementMode;
+                this._placementDefKey = this._placementMode ? 'sortingFacility' : null;
+                placeSortingBtn.classList.toggle('active', this._placementMode);
+                placeSortingBtn.setAttribute('aria-pressed', String(this._placementMode));
+                if (this._placementMode) {
+                    this._updateHover(this.input.activePointer);
+                } else {
+                    this._hoverGraphics.clear();
+                }
+            });
+        }
+
         // Exit placement mode on Escape
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this._placementMode) {
@@ -505,27 +655,28 @@ class PrototypeScene extends Phaser.Scene {
             const title = document.createElement('div');
             title.style.fontWeight = '600';
             title.style.marginBottom = '6px';
-            if (targetType === 'municipalWaste') {
-                title.textContent = scene._buildingDefs.municipalWaste.name;
-            } else if (targetType === 'building' && targetRecord) {
-                title.textContent = targetRecord.type || 'Building';
+            if (targetRecord) {
+                title.textContent = targetRecord.type || targetRecord.defKey || 'Building';
             } else {
                 title.textContent = '';
             }
             if (title.textContent) el.appendChild(title);
 
-            if (targetType === 'municipalWaste') {
+            // Suggested next machines (driven by definition metadata)
+            if (targetRecord && Array.isArray(targetRecord.suggestedNext) && targetRecord.suggestedNext.length > 0) {
                 const sugLabel = document.createElement('div');
                 sugLabel.style.marginBottom = '6px';
                 sugLabel.textContent = 'Suggested Next Machine';
                 el.appendChild(sugLabel);
-                const sug = document.createElement('button');
-                sug.textContent = 'Sorting Facility';
-                sug.style.display = 'block';
-                sug.style.width = '100%';
-                sug.style.marginBottom = '6px';
-                sug.onclick = () => handleSuggestedMachine('sorting-facility');
-                el.appendChild(sug);
+                for (const s of targetRecord.suggestedNext) {
+                    const btn = document.createElement('button');
+                    btn.textContent = s.name || s.defKey || 'Suggested';
+                    btn.style.display = 'block';
+                    btn.style.width = '100%';
+                    btn.style.marginBottom = '6px';
+                    btn.onclick = () => handleSuggestedMachine(s.defKey);
+                    el.appendChild(btn);
+                }
             } else if (targetType === 'building') {
                 const sugLabel = document.createElement('div');
                 sugLabel.style.marginBottom = '6px';
@@ -537,6 +688,20 @@ class PrototypeScene extends Phaser.Scene {
                 el.appendChild(coming);
             }
 
+            // Delete option for deletable buildings (not for municipalWaste)
+            if (targetRecord && targetRecord.deletable) {
+                const delBtn = document.createElement('button');
+                delBtn.textContent = 'Delete Building';
+                delBtn.style.display = 'block';
+                delBtn.style.width = '100%';
+                delBtn.style.margin = '6px 0';
+                delBtn.onclick = () => {
+                    deleteBuilding(targetRecord);
+                    hideContextMenu();
+                };
+                el.appendChild(delBtn);
+            }
+
             // Toolbar toggle
             const toolbarBtn = document.createElement('button');
             const toolbarVisible = toolbarEl && toolbarEl.style.display !== 'none';
@@ -546,6 +711,27 @@ class PrototypeScene extends Phaser.Scene {
                 hideContextMenu();
             };
             el.appendChild(toolbarBtn);
+
+            // Machine Status Colours toggle (global)
+            const statusBtn = document.createElement('button');
+            statusBtn.textContent = scene._sceneSettings.showMachineStatusColours ? 'Machine Status Colours: On' : 'Machine Status Colours: Off';
+            statusBtn.style.display = 'block';
+            statusBtn.style.width = '100%';
+            statusBtn.style.margin = '6px 0';
+            statusBtn.onclick = () => {
+                scene._sceneSettings.showMachineStatusColours = !scene._sceneSettings.showMachineStatusColours;
+                statusBtn.textContent = scene._sceneSettings.showMachineStatusColours ? 'Machine Status Colours: On' : 'Machine Status Colours: Off';
+                // Update visuals for all machines without changing their status
+                if (typeof scene._recomputeMachineStatuses === 'function') scene._recomputeMachineStatuses();
+                hideContextMenu();
+            };
+            el.appendChild(statusBtn);
+
+            // Ensure labels/selection update when menu is shown for a record
+            if (targetRecord) {
+                scene._selectedCell = { ix: targetRecord.gridX, iy: targetRecord.gridY };
+                scene._drawSelection();
+            }
 
             // Position and show
             el.style.display = 'block';
@@ -573,15 +759,37 @@ class PrototypeScene extends Phaser.Scene {
                 const key = `${ix},${iy}`;
                 if (this._buildings.has(key)) {
                     const rec = this._buildings.get(key);
-                    if (rec && rec.defKey === 'municipalWaste') {
-                        showContextMenuFor('municipalWaste', rec, x, y);
-                        return;
-                    }
                     showContextMenuFor('building', rec, x, y);
                     return;
                 }
                 showContextMenuFor('ground', null, x, y);
             });
+        }
+
+        // Shared delete function
+        function deleteBuilding(record) {
+            if (!record || !record.deletable) return;
+            // Remove any attached power cables before destroying
+            if (typeof scene._removeCablesForRecord === 'function') scene._removeCablesForRecord(record);
+            const def = scene._buildingDefs[record.defKey] || scene._buildingDefs.processUnit;
+            const fw = def.footprint[0];
+            const fh = def.footprint[1];
+            // remove occupancy keys that point to this record
+            for (let dx = 0; dx < fw; dx++) {
+                for (let dy = 0; dy < fh; dy++) {
+                    const k = `${record.gridX + dx},${record.gridY + dy}`;
+                    const existing = scene._buildings.get(k);
+                    if (existing === record) {
+                        scene._buildings.delete(k);
+                    }
+                }
+            }
+            // destroy container (label is child)
+            if (record.container && record.container.destroy) record.container.destroy();
+            // clear selection and visuals
+            scene._selectedCell = null;
+            scene._hoveredRecord = null;
+            scene._drawSelection();
         }
 
         // Close context menu on left-click elsewhere or Escape
@@ -594,6 +802,23 @@ class PrototypeScene extends Phaser.Scene {
         });
         document.addEventListener('keydown', (ev) => {
             if (ev.key === 'Escape') hideContextMenu();
+        });
+
+        // Keyboard delete/backspace handling for deletable selected buildings
+        document.addEventListener('keydown', (ev) => {
+            // ignore if focused on input or editable element
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+
+            if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._selectedCell) {
+                const key = `${this._selectedCell.ix},${this._selectedCell.iy}`;
+                const rec = this._buildings.get(key);
+                if (rec && rec.deletable) {
+                    ev.preventDefault();
+                    deleteBuilding(rec);
+                    hideContextMenu();
+                }
+            }
         });
 
         // Cancel an in-progress drag when Escape is pressed
@@ -624,34 +849,62 @@ class PrototypeScene extends Phaser.Scene {
                     this._gridHasRendered = true;
                 }
             }
-            // Place the initial Municipal Waste Collection once after the first visible grid render
-            if (this._gridHasRendered && !this._initialMunicipalPlaced) {
+            // Place the initial permanent source buildings once after the first visible grid render
+            if (this._gridHasRendered && !this._initialSourcesPlaced) {
                 const cam = this.cameras.main;
                 const gs = this._gridConfig;
                 const view = cam.worldView;
-                const def = this._buildingDefs.municipalWaste;
-                const fw = def.footprint[0];
-                const fh = def.footprint[1];
-                // compute top-center origin (a few rows below top)
+
+                // compute a readable 3x2 grid layout relative to viewport centre
                 const centerX = view.x + view.width / 2;
-                const ix = Math.floor(centerX / gs.minor) - Math.floor(fw / 2);
-                const iy = Math.floor((view.y + gs.minor * 1.5) / gs.minor);
-                // ensure no duplicate and reserve cells
-                // If any municipalWaste already exists, skip
-                let exists = false;
-                for (const rec of this._buildings.values()) {
-                    if (rec && rec.defKey === 'municipalWaste') { exists = true; break; }
-                }
-                if (!exists) {
-                    const rec = this._placeBuilding(ix, iy, 'municipalWaste');
+                const centerIx = Math.floor(centerX / gs.minor);
+                const startIx = centerIx - 14; // left-most column
+                const startIy = Math.floor((view.y + gs.minor * 1.5) / gs.minor);
+
+                const placements = [
+                    { key: 'municipalWaste', ix: startIx + 0, iy: startIy + 0 },
+                    { key: 'technologyWaste', ix: startIx + 6, iy: startIy + 0 },
+                    { key: 'farmWaste', ix: startIx + 12, iy: startIy + 0 },
+                    { key: 'industrialWaste', ix: startIx + 0, iy: startIy + 6 },
+                    { key: 'buildingWaste', ix: startIx + 6, iy: startIy + 6 },
+                    { key: 'sewerage', ix: startIx + 12, iy: startIy + 6 }
+                ];
+
+                for (const p of placements) {
+                    // skip if a building of this defKey already exists
+                    let exists = false;
+                    for (const rec of this._buildings.values()) {
+                        if (rec && rec.defKey === p.key) { exists = true; break; }
+                    }
+                    if (exists) continue;
+
+                    const def = this._buildingDefs[p.key];
+                    if (!def) continue;
+                    const rec = this._placeBuilding(p.ix, p.iy, p.key);
                     if (rec) {
-                        // apply permanent/movable flags from def
                         rec.permanent = def.permanent === true;
                         rec.deletable = def.deletable !== false;
                         rec.movable = def.movable !== false;
                     }
                 }
-                this._initialMunicipalPlaced = true;
+
+                this._initialSourcesPlaced = true;
+                // Place External Grid and a demo Process Unit and connect them with a power cable for the initial demo
+                try {
+                    const gridRec = this._placeBuilding(startIx + 18, startIy + 0, 'externalGrid');
+                    if (gridRec) { gridRec.permanent = true; gridRec.deletable = false; gridRec.movable = true; }
+                    // place a demo process unit nearby
+                    const demoRec = this._placeBuilding(startIx + 18, startIy + 4, 'processUnit');
+                    if (demoRec) { demoRec.permanent = false; demoRec.deletable = true; demoRec.movable = true; }
+                    if (gridRec && demoRec && typeof this._createPowerCable === 'function') {
+                        this._createPowerCable({ id: 'power-1', fromRecord: gridRec, toRecord: demoRec, energized: true, flowState: 'import', powerMW: 2.4 });
+                    }
+                    // Recompute statuses after initial wiring
+                    if (typeof this._recomputeMachineStatuses === 'function') this._recomputeMachineStatuses();
+                    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
+                } catch (e) {
+                    console.warn('Error placing initial External Grid demo:', e);
+                }
             }
         }
 }
@@ -910,6 +1163,12 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
 
     container.add([img, label]);
 
+    // If definition provides a shortCode (for source/placeholders), render it centered over the image
+    if (def.shortCode) {
+        const codeText = this.add.text(centerX, centerY, def.shortCode, { fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5);
+        container.add(codeText);
+    }
+
     const record = {
         id,
         type: def.name,
@@ -924,6 +1183,356 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
         suggestedNext: def.suggestedNext || []
     };
 
+// ---------------------------
+// Machine status visuals and power cable system
+// ---------------------------
+
+PrototypeScene.prototype._ensureStatusBg = function (record) {
+    if (!record) return;
+    if (record.statusBg && record.statusBg.destroyed) record.statusBg = null;
+    if (record.statusBg) return;
+    const def = this._buildingDefs[record.defKey] || this._buildingDefs.processUnit;
+    const gs = this._gridConfig;
+    const fw = def.footprint[0];
+    const fh = def.footprint[1];
+    const pad = 6;
+    const w = fw * gs.minor + pad;
+    const h = fh * gs.minor + pad;
+    const bg = this.add.graphics();
+    // Draw rounded rect anchored so it sits behind the building
+    const r = Math.min(12, Math.min(w, h) * 0.12);
+    bg.fillStyle(0x000000, 0); // initial transparent
+    bg.fillRoundedRect(-pad/2, -pad/2, w, h, r);
+    bg.lineStyle(0, 0x000000, 0);
+    // Ensure it doesn't capture pointer events
+    try { bg.disableInteractive && bg.disableInteractive(); } catch (e) {}
+    // Insert as first child so it appears behind image and label
+    record.container.addAt(bg, 0);
+    record.statusBg = bg;
+};
+
+PrototypeScene.prototype._updateMachineStatusVisual = function (record) {
+    if (!record) return;
+    this._ensureStatusBg(record);
+    const bg = record.statusBg;
+    if (!bg) return;
+    const status = record.status || 'neutral';
+    const cfg = this._statusColours[status] || this._statusColours.neutral;
+    bg.clear();
+    if (!this._sceneSettings.showMachineStatusColours || !cfg || !cfg.colour || cfg.alpha <= 0) {
+        bg.setVisible(false);
+        return;
+    }
+    const def = this._buildingDefs[record.defKey] || this._buildingDefs.processUnit;
+    const gs = this._gridConfig;
+    const fw = def.footprint[0];
+    const fh = def.footprint[1];
+    const pad = 6;
+    const w = fw * gs.minor + pad;
+    const h = fh * gs.minor + pad;
+    const r = Math.min(12, Math.min(w, h) * 0.12);
+    bg.fillStyle(cfg.colour, cfg.alpha);
+    bg.fillRoundedRect(-pad/2, -pad/2, w, h, r);
+    bg.setVisible(true);
+};
+
+PrototypeScene.prototype._updateAllStatusVisibility = function () {
+    // Toggle visibility of all status backgrounds according to scene setting
+    const seen = new Set();
+    for (const rec of this._buildings.values()) {
+        if (!rec || !rec.id) continue;
+        if (seen.has(rec.id)) continue;
+        seen.add(rec.id);
+        if (rec.statusBg) {
+            rec.statusBg.setVisible(Boolean(this._sceneSettings.showMachineStatusColours));
+        }
+    }
+};
+
+PrototypeScene.prototype._isRecordConnectedToPower = function (record) {
+    if (!record) return false;
+    for (const cable of this._powerCables.values()) {
+        if (!cable) continue;
+        if (cable.fromRecord === record || cable.toRecord === record) return true;
+    }
+    return false;
+};
+
+PrototypeScene.prototype._recomputeMachineStatuses = function () {
+    // Determine status for each unique building record
+    const seen = new Set();
+    for (const rec of this._buildings.values()) {
+        if (!rec || !rec.id) continue;
+        if (seen.has(rec.id)) continue;
+        seen.add(rec.id);
+        // Permanent sources remain neutral
+        if (rec.permanent) {
+            rec.status = 'neutral';
+        } else {
+            rec.status = this._isRecordConnectedToPower(rec) ? 'working' : 'fault';
+        }
+        this._updateMachineStatusVisual(rec);
+    }
+};
+
+PrototypeScene.prototype._getRecordCenter = function (rec) {
+    const def = this._buildingDefs[rec.defKey] || this._buildingDefs.processUnit;
+    const gs = this._gridConfig;
+    const fw = def.footprint[0];
+    const fh = def.footprint[1];
+    const cx = rec.container.x + (fw * gs.minor) / 2;
+    const cy = rec.container.y + (fh * gs.minor) / 2 - 6;
+    return { x: cx, y: cy };
+};
+
+PrototypeScene.prototype._createPowerCable = function (model) {
+    // model may include fromRecord/toRecord or building ids
+    const id = model.id || `power-${Date.now()}`;
+    const fromRec = model.fromRecord || Array.from(this._buildings.values()).find(r => r && r.id === model.fromBuildingId) || null;
+    const toRec = model.toRecord || Array.from(this._buildings.values()).find(r => r && r.id === model.toBuildingId) || null;
+    if (!fromRec || !toRec) return null;
+    const cable = {
+        id,
+        type: 'power',
+        fromRecord: fromRec,
+        toRecord: toRec,
+        energized: Boolean(model.energized),
+        flowState: model.flowState || 'import',
+        powerMW: Number(model.powerMW) || 0,
+        _line: null,
+        _hit: null,
+        _bolt: null,
+        _pulseTween: null,
+        _pulseObj: null
+    };
+
+    // Graphics for the visible black cable
+    const g = this.add.graphics();
+    cable._line = g;
+    // Invisible thicker hit area for interactions
+    const h = this.add.graphics();
+    cable._hit = h;
+
+    // Bolt marker
+    const boltStyle = { fontSize: '18px', color: '#ffffff' };
+    const bolt = this.add.text(0,0,'⚡', boltStyle).setOrigin(0.5);
+    bolt.setVisible(false);
+    cable._bolt = bolt;
+
+    // Draw/update function
+    const scene = this;
+    cable._redraw = function () {
+        const a = scene._getRecordCenter(cable.fromRecord);
+        const b = scene._getRecordCenter(cable.toRecord);
+        g.clear();
+        g.lineStyle(2, 0x000000, 1);
+        g.beginPath();
+        g.moveTo(a.x, a.y);
+        g.lineTo(b.x, b.y);
+        g.strokePath();
+
+        // hit area
+        h.clear();
+        h.lineStyle(8, 0x000000, 0);
+        h.beginPath();
+        h.moveTo(a.x, a.y);
+        h.lineTo(b.x, b.y);
+        h.strokePath();
+        try { h.setInteractive(new Phaser.Geom.Line(a.x, a.y, b.x, b.y), Phaser.Geom.Line.Contains); } catch (e) {}
+
+        // Position bolt initially
+        if (cable.energized && cable._bolt) {
+            cable._bolt.setVisible(true);
+        } else if (cable._bolt) {
+            cable._bolt.setVisible(false);
+        }
+    };
+
+    // Hover tooltip handling
+    const showTooltip = (pointer) => {
+        if (!scene._powerTooltipEl) {
+            const t = document.createElement('div');
+            t.id = 'power-tooltip';
+            t.style.position = 'absolute';
+            t.style.background = '#0b1220';
+            t.style.color = '#fff';
+            t.style.padding = '8px';
+            t.style.border = '1px solid rgba(255,255,255,0.06)';
+            t.style.fontSize = '12px';
+            t.style.zIndex = 10001;
+            document.body.appendChild(t);
+            scene._powerTooltipEl = t;
+        }
+        const t = scene._powerTooltipEl;
+        const mode = cable.energized ? 'Energized' : 'No power';
+        if (!cable.energized) {
+            t.innerHTML = `<strong>Electrical Cable</strong><br>Status: No power`;
+        } else {
+            const flow = cable.flowState === 'import' ? `${cable.fromRecord.type} → ${cable.toRecord.type}` : `${cable.fromRecord.type} → ${cable.toRecord.type}`;
+            const modeTxt = cable.flowState === 'export' ? 'Exporting' : (cable.flowState === 'import' ? 'Importing' : 'Balanced');
+            t.innerHTML = `<strong>Electrical Cable</strong><br>Status: Energized<br>Flow: ${flow}<br>Power: ${cable.powerMW} MW<br>Mode: ${modeTxt}`;
+        }
+        t.style.left = (pointer.clientX + 12) + 'px';
+        t.style.top = (pointer.clientY + 12) + 'px';
+        t.style.display = 'block';
+    };
+    const hideTooltip = () => {
+        if (scene._powerTooltipEl) scene._powerTooltipEl.style.display = 'none';
+    };
+
+    // Pointer events
+    h.on('pointerover', function (pointer) { showTooltip(pointer); });
+    h.on('pointerout', function () { hideTooltip(); });
+
+    // Start/stop pulse animation helpers
+    cable._startPulse = function () {
+        // avoid duplicate tweens
+        if (cable._pulseTween) return;
+        if (!cable.energized) return;
+        const a = scene._getRecordCenter(cable.fromRecord);
+        const b = scene._getRecordCenter(cable.toRecord);
+        const dir = cable.flowState === 'export' ? -1 : 1;
+        const obj = { t: dir === 1 ? 0 : 1 };
+        cable._pulseObj = obj;
+        const dur = scene._getPulseInterval(cable.powerMW);
+        cable._pulseTween = scene.tweens.add({
+            targets: obj,
+            t: dir === 1 ? 1 : 0,
+            duration: dur,
+            ease: 'Linear',
+            repeat: -1,
+            onUpdate: function () {
+                const t = obj.t;
+                const x = a.x + (b.x - a.x) * t;
+                const y = a.y + (b.y - a.y) * t;
+                if (cable._bolt) cable._bolt.setPosition(x, y);
+            }
+        });
+        // set bolt colour by flow state / hub mode
+        if (cable.flowState === 'export') {
+            cable._bolt.setStyle({ color: '#2f7df6' });
+            cable._bolt.setStroke('#8fc5ff', 1.5);
+        } else {
+            cable._bolt.setStyle({ color: '#e34848' });
+            try { cable._bolt.setStroke(null); } catch (e) {}
+        }
+    };
+
+    cable._stopPulse = function () {
+        if (cable._pulseTween) {
+            try { scene.tweens.killTweensOf(cable._pulseObj); } catch (e) {}
+            cable._pulseTween = null;
+            cable._pulseObj = null;
+        }
+        if (cable._bolt) cable._bolt.setVisible(false);
+    };
+
+    // Attach cable to scene storage
+    this._powerCables.set(id, cable);
+    cable._redraw();
+
+    // Start pulse if energized
+    if (cable.energized) cable._startPulse();
+
+    return cable;
+};
+
+PrototypeScene.prototype._removePowerCable = function (id) {
+    const cable = this._powerCables.get(id);
+    if (!cable) return;
+    try { if (cable._pulseTween) this.tweens.killTweensOf(cable._pulseObj); } catch (e) {}
+    if (cable._line && cable._line.destroy) cable._line.destroy();
+    if (cable._hit && cable._hit.destroy) cable._hit.destroy();
+    if (cable._bolt && cable._bolt.destroy) cable._bolt.destroy();
+    this._powerCables.delete(id);
+};
+
+PrototypeScene.prototype._removeCablesForRecord = function (record) {
+    const toRemove = [];
+    for (const [id, cable] of this._powerCables.entries()) {
+        if (cable.fromRecord === record || cable.toRecord === record) toRemove.push(id);
+    }
+    for (const id of toRemove) this._removePowerCable(id);
+    // recompute machine statuses after removal
+    this._recomputeMachineStatuses();
+};
+
+PrototypeScene.prototype._updateCablesForRecord = function (record) {
+    for (const cable of this._powerCables.values()) {
+        if (cable.fromRecord === record || cable.toRecord === record) {
+            if (typeof cable._redraw === 'function') cable._redraw();
+        }
+    }
+    // ensure bolts reposition if pulses active
+    // also recompute statuses
+    this._recomputeMachineStatuses();
+    // update power indicator UI
+    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
+};
+
+PrototypeScene.prototype._getPulseInterval = function (powerMW) {
+    // Placeholder mapping; future scaling can use powerMW
+    return 1100;
+};
+
+PrototypeScene.prototype.setDebugHubPowerMode = function (mode) {
+    this._hubPowerState.mode = mode;
+    // Simple behavior for demo: set all cables energized and flowState based on mode
+    for (const cable of this._powerCables.values()) {
+        if (mode === 'offline') {
+            cable.energized = false;
+            cable._stopPulse && cable._stopPulse();
+        } else if (mode === 'import') {
+            cable.energized = true;
+            cable.flowState = 'import';
+            cable._startPulse && cable._startPulse();
+        } else if (mode === 'export') {
+            cable.energized = true;
+            cable.flowState = 'export';
+            cable._startPulse && cable._startPulse();
+        } else {
+            cable.energized = true;
+            cable.flowState = 'balanced';
+            cable._startPulse && cable._startPulse();
+        }
+    }
+    this._recomputeMachineStatuses();
+    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
+};
+
+PrototypeScene.prototype._renderPowerIndicator = function () {
+    const wrap = document.getElementById('power-indicator');
+    if (!wrap) return;
+    const state = this._hubPowerState || { mode: 'offline', importMW: 0, exportMW: 0, netMW: 0 };
+    wrap.innerHTML = '';
+    const icon = document.createElement('div');
+    icon.style.fontSize = '18px';
+    icon.style.marginBottom = '2px';
+    const label = document.createElement('div');
+    label.style.fontSize = '12px';
+    label.style.lineHeight = '1.1';
+    if (state.mode === 'import') {
+        icon.textContent = '⚡';
+        icon.style.color = '#e34848';
+        label.innerHTML = '<strong>Power</strong><br>Importing<br>' + (state.importMW || 0) + ' MW';
+    } else if (state.mode === 'export') {
+        icon.textContent = '⚡';
+        icon.style.color = '#2f7df6';
+        icon.style.webkitTextStroke = '1px #8fc5ff';
+        label.innerHTML = '<strong>Power</strong><br>Exporting<br>' + (state.exportMW || 0) + ' MW';
+    } else if (state.mode === 'balanced') {
+        icon.textContent = '⚡';
+        icon.style.color = '#9ca3af';
+        label.innerHTML = '<strong>Power</strong><br>Balanced<br>' + (state.netMW || 0) + ' MW';
+    } else {
+        icon.textContent = '⚡';
+        icon.style.color = '#6b7280';
+        label.innerHTML = '<strong>Power</strong><br>Offline';
+    }
+    wrap.appendChild(icon);
+    wrap.appendChild(label);
+};
+
     // Reserve all footprint cells in the occupancy map pointing to the same record
     for (let dx = 0; dx < fw; dx++) {
         for (let dy = 0; dy < fh; dy++) {
@@ -934,6 +1543,10 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
 
     // Ensure new building's label visibility follows the global setting
     this._updateLabelsVisibility();
+
+    // Initialize status and visuals
+    record.status = 'neutral';
+    if (typeof this._updateMachineStatusVisual === 'function') this._updateMachineStatusVisual(record);
 
     return record;
 };
@@ -951,3 +1564,193 @@ const config = {
 };
 
 new Phaser.Game(config);
+
+// Unresolved outputs donut chart renderer (independent from Phaser)
+(function () {
+    // Temporary chart weighting.
+    // Future resource accounting will determine how solids, liquids and gases
+    // are compared within the unresolved-output indicator.
+
+    // Temporary equal weighting for source placeholders.
+    // Future material accounting will calculate authoritative quantities
+    // and determine how solids, liquids and gases contribute to the chart.
+    let unresolvedOutputs = [
+        { key: 'municipal-waste', name: 'Municipal Waste', phase: 'solid', amount: 100, unit: 't', chartValue: 100 },
+        { key: 'technology-waste', name: 'Technology Waste', phase: 'solid', amount: 100, unit: 't', chartValue: 100 },
+        { key: 'farm-waste', name: 'Farm Waste', phase: 'solid', amount: 100, unit: 't', chartValue: 100 },
+        { key: 'industrial-waste', name: 'Industrial Waste', phase: 'solid', amount: 100, unit: 't', chartValue: 100 },
+        { key: 'building-waste', name: 'Building Waste', phase: 'solid', amount: 100, unit: 't', chartValue: 100 },
+        { key: 'sewerage', name: 'Sewerage', phase: 'liquid', amount: 100, unit: 'ML', chartValue: 100 }
+    ];
+
+    function getColorForKey(key, index) {
+        // Stable colour mapping for known sources
+        const map = {
+            'municipal-waste': '#10b981',
+            'technology-waste': '#3b82f6',
+            'farm-waste': '#f59e0b',
+            'industrial-waste': '#ef4444',
+            'building-waste': '#8b5cf6',
+            'sewerage': '#06b6d4'
+        };
+        if (map[key]) return map[key];
+        const fallback = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+        return fallback[index % fallback.length];
+    }
+
+    function calculateUnresolvedTotal(items) {
+        if (!Array.isArray(items)) return 0;
+        return items.reduce((sum, it) => {
+            const v = Number(it && it.chartValue);
+            if (!isFinite(v) || v <= 0) return sum;
+            return sum + v;
+        }, 0);
+    }
+
+    function setUnresolvedOutputs(items) {
+        if (!Array.isArray(items)) items = [];
+        unresolvedOutputs = items.slice();
+        renderUnresolvedOutputsChart();
+    }
+
+    function renderUnresolvedOutputsChart() {
+        const svgWrap = document.querySelector('#unresolved-output-chart svg');
+        const totalEl = document.getElementById('unresolved-output-total');
+        const legendEl = document.getElementById('unresolved-output-legend');
+
+        if (!svgWrap || !totalEl || !legendEl) return;
+
+        // Clear existing
+        while (svgWrap.firstChild) svgWrap.removeChild(svgWrap.firstChild);
+        legendEl.textContent = '';
+
+        const valid = Array.isArray(unresolvedOutputs) ? unresolvedOutputs.filter(it => {
+            if (!it) return false;
+            const v = Number(it.chartValue);
+            return isFinite(v) && v > 0;
+        }) : [];
+
+        const total = calculateUnresolvedTotal(unresolvedOutputs);
+
+        const size = 160;
+        const cx = size / 2;
+        const cy = size / 2;
+        const radius = 60;
+        const stroke = 20;
+        const circumference = 2 * Math.PI * radius;
+
+        // Background ring
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        bg.setAttribute('cx', String(cx));
+        bg.setAttribute('cy', String(cy));
+        bg.setAttribute('r', String(radius));
+        bg.setAttribute('fill', 'none');
+        bg.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+        bg.setAttribute('stroke-width', String(stroke));
+        svgWrap.appendChild(bg);
+
+        let ariaParts = [];
+
+        if (valid.length === 0 || total === 0) {
+            // Empty state: show only background and centre text
+            totalEl.querySelector('strong').textContent = '0';
+            // ensure unit/text matches spec
+            const span = totalEl.querySelector('span'); if (span) span.textContent = 'unresolved';
+            const note = document.createElement('div');
+            note.className = 'unresolved-empty';
+            note.textContent = 'No unresolved outputs currently tracked';
+            legendEl.appendChild(note);
+            svgWrap.setAttribute('aria-label', 'Unresolved outputs chart: none');
+            return;
+        }
+
+        // Create segments
+        let offset = 0; // in length units along circumference
+        valid.forEach((it, idx) => {
+            const v = Number(it.chartValue);
+            const frac = v / total;
+            const segLen = circumference * frac;
+
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', String(cx));
+            circle.setAttribute('cy', String(cy));
+            circle.setAttribute('r', String(radius));
+            circle.setAttribute('fill', 'none');
+            circle.setAttribute('stroke', getColorForKey(it.key || '', idx));
+            circle.setAttribute('stroke-width', String(stroke));
+            circle.setAttribute('stroke-linecap', 'butt');
+            // stroke-dasharray: segment length followed by remainder (so segment shows as slice)
+            circle.setAttribute('stroke-dasharray', `${segLen} ${circumference}`);
+            // offset measured from start of circle; rotate so start at top
+            circle.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+            // apply dashoffset as negative offset so subsequent segments are shifted
+            circle.setAttribute('stroke-dashoffset', String(-offset));
+
+            svgWrap.appendChild(circle);
+
+            offset += segLen;
+
+            // Build legend row
+            const row = document.createElement('div');
+            row.className = 'unresolved-legend-row';
+
+            const color = document.createElement('div');
+            color.className = 'unresolved-legend-color';
+            color.style.background = getColorForKey(it.key || '', idx);
+            row.appendChild(color);
+
+            // Name + phase badge (top) and details (amount + percent) under the name
+            const nameWrap = document.createElement('div');
+            nameWrap.className = 'unresolved-legend-main';
+
+            const nameRow = document.createElement('div');
+            nameRow.style.display = 'flex';
+            nameRow.style.alignItems = 'center';
+
+            const name = document.createElement('div');
+            name.className = 'unresolved-legend-name';
+            name.textContent = it.name || it.key || 'Unknown';
+            nameRow.appendChild(name);
+
+            // phase badges removed per design — volume is shown in details
+
+            nameWrap.appendChild(nameRow);
+
+            const details = document.createElement('div');
+            details.className = 'unresolved-legend-details';
+            const amountText = (isFinite(Number(it.amount)) ? `${it.amount}${it.unit ? ' ' + it.unit : ''}` : '-');
+            const pct = Math.round(frac * 100);
+            details.textContent = amountText + ' ' + pct + '%';
+            nameWrap.appendChild(details);
+
+            row.appendChild(nameWrap);
+
+            legendEl.appendChild(row);
+
+            ariaParts.push(`${it.name || it.key || 'Unknown'}, ${amountText}, ${pct} percent`);
+        });
+
+        // Centre display: placeholder percentage until authoritative accounting exists
+        const centreStrong = totalEl.querySelector('strong');
+        const centreSpan = totalEl.querySelector('span');
+        if (centreStrong) centreStrong.textContent = '100%';
+        if (centreSpan) centreSpan.textContent = 'unresolved';
+
+        // Accessibility label summarising resources
+        svgWrap.setAttribute('aria-label', `Unresolved outputs chart: ${ariaParts.join('; ')}`);
+        // Update power indicator UI if the simulator scene is available
+        try { if (window.__simulatorScene && typeof window.__simulatorScene._renderPowerIndicator === 'function') window.__simulatorScene._renderPowerIndicator(); } catch (e) {}
+    }
+
+    // Initialize on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', renderUnresolvedOutputsChart);
+    } else {
+        renderUnresolvedOutputsChart();
+    }
+
+    // Expose setter globally so future code can update the chart
+    window.setUnresolvedOutputs = setUnresolvedOutputs;
+    window.calculateUnresolvedTotal = calculateUnresolvedTotal;
+    window.renderUnresolvedOutputsChart = renderUnresolvedOutputsChart;
+})();
