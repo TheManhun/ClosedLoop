@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>@yield('title', 'Closed Loop')</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
     <style>
         body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0}
         header{background:#0f172a;color:#fff;padding:0.75rem}
@@ -22,5 +23,6 @@
     <main>
         @yield('content')
     </main>
+    @yield('scripts')
 </body>
 </html>
