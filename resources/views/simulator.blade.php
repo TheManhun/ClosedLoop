@@ -10,6 +10,7 @@
     <div class="simulator-root-wrapper" style="margin-top:1rem">
         <div class="simulator-toolbar" aria-hidden="false">
             <button id="place-process-unit-btn" class="toolbar-button" aria-pressed="false">Place Process Unit</button>
+            <button id="toggle-show-names-btn" class="toolbar-button" aria-pressed="false">Show Names</button>
         </div>
         <div id="simulator-root"></div>
     </div>
