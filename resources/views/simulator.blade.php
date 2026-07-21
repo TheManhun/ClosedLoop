@@ -4,18 +4,29 @@
 @section('title', 'Simulator')
 
 @section('content')
-    <h1>Simulator</h1>
-    <p>This page will host the Closed Loop simulator interface.</p>
+    <!-- simulator page title and description removed -->
 
     <div class="simulator-root-wrapper" style="margin-top:1rem">
-        <div class="simulator-toolbar" aria-hidden="false" style="display:none" id="simulator-toolbar">
-            <div class="simulator-palette" role="toolbar" aria-label="Building palette">
-                <button id="place-process-unit-btn" class="toolbar-button" aria-pressed="false">Process Unit</button>
-                <button id="place-sorting-facility-btn" class="toolbar-button" aria-pressed="false">Sorting Facility</button>
-            </div>
-            <button id="toggle-show-names-btn" class="toolbar-button" aria-pressed="false">Show Names</button>
-        </div>
         <div id="simulator-root"></div>
+        <div id="factory-editor-root" class="factory-editor-root">
+            <aside id="toolbox" class="toolbox closed" aria-label="Toolbox">
+                <div class="toolbox-header">
+                    <button id="toolbox-toggle" class="toolbox-toggle" aria-expanded="false">☰</button>
+                    <div class="toolbox-title">Toolbox</div>
+                    <div id="toolbox-resizer" class="toolbox-resizer" title="Resize"></div>
+                </div>
+                <div class="toolbox-body" id="toolbox-body">
+                    <ul id="toolbox-items" class="toolbox-items">
+                        <!-- items populated by JS -->
+                    </ul>
+                </div>
+            </aside>
+            <main id="viewport" class="viewport" tabindex="0" aria-label="Factory editor viewport">
+                <div id="world" class="world">
+                    <!-- components placed here -->
+                </div>
+            </main>
+        </div>
         <!-- Unresolved Outputs panel (HTML overlay, positioned relative to simulator-root-wrapper) -->
         <section class="unresolved-output-panel" aria-label="Unresolved Outputs panel">
 
@@ -38,5 +49,5 @@
 @endsection
 
 @section('scripts')
-    @vite('resources/js/simulator.js')
+    @vite(['resources/js/simulator.js','resources/js/factory-editor.js'])
 @endsection

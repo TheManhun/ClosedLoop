@@ -14,6 +14,8 @@ class PrototypeScene extends Phaser.Scene {
         // Resource images provided by user
         this.load.image('src_mw', '/trash.png');
         this.load.image('src_tw', '/e-waste.png');
+        // Note: filename in public/ is 'scraptyrees.png' (typo variant), load that file
+        this.load.image('src_st', '/scraptyrees.png');
         this.load.image('src_fw', '/farmwaste.png');
         this.load.image('src_iw', '/industrial_waste.png');
         this.load.image('src_bw', '/building_waste.png');
@@ -110,6 +112,18 @@ class PrototypeScene extends Phaser.Scene {
                 movable: true,
                 placeable: false,
                 shortCode: 'TW',
+                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
+            },
+            scrapTyres: {
+                name: 'Scrap Tyres',
+                image: 'src_st',
+                category: 'source',
+                footprint: [4, 4],
+                permanent: true,
+                deletable: false,
+                movable: true,
+                placeable: false,
+                shortCode: 'ST',
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             farmWaste: {
@@ -849,6 +863,7 @@ class PrototypeScene extends Phaser.Scene {
                     { key: 'municipalWaste', ix: startIx + 0, iy: startIy + 0 },
                     { key: 'technologyWaste', ix: startIx + 6, iy: startIy + 0 },
                     { key: 'farmWaste', ix: startIx + 12, iy: startIy + 0 },
+                    { key: 'scrapTyres', ix: startIx + 18, iy: startIy + 0 },
                     { key: 'industrialWaste', ix: startIx + 0, iy: startIy + 6 },
                     { key: 'buildingWaste', ix: startIx + 6, iy: startIy + 6 },
                     { key: 'sewerage', ix: startIx + 12, iy: startIy + 6 }
@@ -875,12 +890,9 @@ class PrototypeScene extends Phaser.Scene {
                 this._initialSourcesPlaced = true;
                 // Place External Grid and a demo Process Unit and connect them with a power cable for the initial demo
                 try {
-                    const gridRec = this._placeBuilding(startIx + 18, startIy + 0, 'externalGrid');
+                    const gridRec = this._placeBuilding(startIx + 22, startIy + 0, 'externalGrid');
                     if (gridRec) { gridRec.permanent = true; gridRec.deletable = false; gridRec.movable = true; }
-                    // place a demo process unit nearby
-                    const demoRec = this._placeBuilding(startIx + 18, startIy + 4, 'processUnit');
-                    if (demoRec) { demoRec.permanent = false; demoRec.deletable = true; demoRec.movable = true; }
-                    // Power cable creation disabled — do not create demo cable
+                    // Do not place demo process unit on load — only show external substation
                     if (typeof this._recomputeMachineStatuses === 'function') this._recomputeMachineStatuses();
                 } catch (e) {
                     console.warn('Error placing initial External Grid demo:', e);
