@@ -1136,21 +1136,11 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
     const centerY = (fh * gs.minor) / 2 - 6;
     const img = this.add.image(centerX, centerY, textureKey);
 
-    // Compute scale based on source image to preserve aspect ratio and fill 85% of footprint
-    const texture = this.textures.get(textureKey);
+    // Force all building sprites to display at the same footprint-relative size
+    // so different source image dimensions appear consistently (matches `trash`).
     const maxWidth = fw * gs.minor * 0.85;
     const maxHeight = fh * gs.minor * 0.85;
-    if (texture && texture.getSourceImage) {
-        const src = texture.getSourceImage();
-        if (src && src.width && src.height) {
-            const scale = Math.min(maxWidth / src.width, maxHeight / src.height, 1);
-            img.setScale(scale);
-        } else {
-            img.setDisplaySize(maxWidth, maxHeight);
-        }
-    } else {
-        img.setDisplaySize(maxWidth, maxHeight);
-    }
+    img.setDisplaySize(maxWidth, maxHeight);
     img.setOrigin(0.5, 0.5);
 
     // Label centered above the full footprint (inside container)
