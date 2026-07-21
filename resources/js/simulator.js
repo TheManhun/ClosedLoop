@@ -6,10 +6,20 @@ class PrototypeScene extends Phaser.Scene {
     }
 
     preload() {
-        // Load building sprite into the texture manager. Public path is at /processingplant.png
+        // Load building and resource images from public/
         this.load.image('processingPlant', '/processingplant.png');
-        // Municipal Waste Collection sprite
         this.load.image('trash', '/trash.png');
+        this.load.image('sorting_facility', '/sortingfactory.png');
+        this.load.image('wastewater_headworks', '/waterwasteplant.png');
+        // Resource images provided by user
+        this.load.image('src_mw', '/trash.png');
+        this.load.image('src_tw', '/e-waste.png');
+        this.load.image('src_fw', '/farmwaste.png');
+        this.load.image('src_iw', '/industrial_waste.png');
+        this.load.image('src_bw', '/building_waste.png');
+        this.load.image('src_sw', '/sewerage_waste.png');
+        // External grid / substation
+        this.load.image('external_grid', '/electricsubstation.png');
     }
 
     create() {
@@ -187,31 +197,7 @@ class PrototypeScene extends Phaser.Scene {
                 suggestedNext: []
             }
         };
-        // Generate simple placeholder textures for sources and sorting facility
-        (function generatePlaceholders(scene) {
-            const map = {
-                src_mw: '#10b981',
-                src_tw: '#3b82f6',
-                src_fw: '#f59e0b',
-                src_iw: '#ef4444',
-                src_bw: '#8b5cf6',
-                src_sw: '#06b6d4',
-                sorting_facility: '#0b1220'
-                ,
-                external_grid: '#111827'
-            };
-            Object.keys(map).forEach((key) => {
-                const color = map[key];
-                const g = scene.add.graphics();
-                const w = 128, h = 96, r = 8;
-                g.fillStyle(parseInt(color.replace('#',''), 16), 1);
-                g.fillRoundedRect(0, 0, w, h, r);
-                g.lineStyle(2, 0xffffff, 0.06);
-                g.strokeRoundedRect(0, 0, w, h, r);
-                g.generateTexture(key, w, h);
-                g.destroy();
-            });
-        })(this);
+        // Placeholders removed — images are loaded from public/ instead
         // Placement mode flag toggled by toolbar selection
         this._placementMode = false;
         // Currently selected placement definition key (e.g. 'municipalWaste' or 'processUnit')
@@ -236,11 +222,9 @@ class PrototypeScene extends Phaser.Scene {
             neutral: { colour: null, alpha: 0 }
         };
 
-        // Power cable storage
-        this._powerCables = new Map();
-
-        // Hub power state (placeholder/debug)
-        this._hubPowerState = { mode: 'import', importMW: 12.6, exportMW: 0, netMW: -12.6 };
+        // Power system disabled — no cable visuals or hub state
+        this._powerCables = null;
+        this._hubPowerState = null;
 
         // Bind drawGrid to the scene update loop — but only redraw when camera changes.
         this.events.on('postupdate', this._drawGrid, this);
@@ -896,12 +880,8 @@ class PrototypeScene extends Phaser.Scene {
                     // place a demo process unit nearby
                     const demoRec = this._placeBuilding(startIx + 18, startIy + 4, 'processUnit');
                     if (demoRec) { demoRec.permanent = false; demoRec.deletable = true; demoRec.movable = true; }
-                    if (gridRec && demoRec && typeof this._createPowerCable === 'function') {
-                        this._createPowerCable({ id: 'power-1', fromRecord: gridRec, toRecord: demoRec, energized: true, flowState: 'import', powerMW: 2.4 });
-                    }
-                    // Recompute statuses after initial wiring
+                    // Power cable creation disabled — do not create demo cable
                     if (typeof this._recomputeMachineStatuses === 'function') this._recomputeMachineStatuses();
-                    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
                 } catch (e) {
                     console.warn('Error placing initial External Grid demo:', e);
                 }
@@ -1143,21 +1123,8 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
     img.setDisplaySize(maxWidth, maxHeight);
     img.setOrigin(0.5, 0.5);
 
-    // Label centered above the full footprint (inside container)
-    const labelX = centerX;
-    const labelY = -6; // slightly above the top of the footprint
-    const labelStyle = { fontSize: '10px', color: '#ffffff', align: 'center', stroke: '#000000', strokeThickness: 2 };
-    const label = this.add.text(labelX, labelY, def.name, labelStyle).setOrigin(0.5, 1);
-    // Subtle shadow for readability
-    label.setShadow(1, 1, '#000000', 2, false, true);
-
-    container.add([img, label]);
-
-    // If definition provides a shortCode (for source/placeholders), render it centered over the image
-    if (def.shortCode) {
-        const codeText = this.add.text(centerX, centerY, def.shortCode, { fontSize: '20px', color: '#ffffff', stroke: '#000000', strokeThickness: 3 }).setOrigin(0.5);
-        container.add(codeText);
-    }
+    // Add sprite only (no persistent name label or shortCode)
+    container.add(img);
 
     const record = {
         id,
@@ -1166,7 +1133,7 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
         gridX: ix,
         gridY: iy,
         container,
-        label,
+        label: null,
         permanent: def.permanent === true,
         deletable: def.deletable !== false,
         movable: def.movable !== false,
@@ -1239,27 +1206,17 @@ PrototypeScene.prototype._updateAllStatusVisibility = function () {
     }
 };
 
-PrototypeScene.prototype._isRecordConnectedToPower = function (record) {
-    if (!record) return false;
-    for (const cable of this._powerCables.values()) {
-        if (!cable) continue;
-        if (cable.fromRecord === record || cable.toRecord === record) return true;
-    }
-    return false;
-};
-
+// Power connections removed — machine statuses default to working (non-permanent) or neutral (permanent)
 PrototypeScene.prototype._recomputeMachineStatuses = function () {
-    // Determine status for each unique building record
     const seen = new Set();
     for (const rec of this._buildings.values()) {
         if (!rec || !rec.id) continue;
         if (seen.has(rec.id)) continue;
         seen.add(rec.id);
-        // Permanent sources remain neutral
         if (rec.permanent) {
             rec.status = 'neutral';
         } else {
-            rec.status = this._isRecordConnectedToPower(rec) ? 'working' : 'fault';
+            rec.status = 'working';
         }
         this._updateMachineStatusVisual(rec);
     }
@@ -1275,190 +1232,13 @@ PrototypeScene.prototype._getRecordCenter = function (rec) {
     return { x: cx, y: cy };
 };
 
-PrototypeScene.prototype._createPowerCable = function (model) {
-    // model may include fromRecord/toRecord or building ids
-    const id = model.id || `power-${Date.now()}`;
-    const fromRec = model.fromRecord || Array.from(this._buildings.values()).find(r => r && r.id === model.fromBuildingId) || null;
-    const toRec = model.toRecord || Array.from(this._buildings.values()).find(r => r && r.id === model.toBuildingId) || null;
-    if (!fromRec || !toRec) return null;
-    const cable = {
-        id,
-        type: 'power',
-        fromRecord: fromRec,
-        toRecord: toRec,
-        energized: Boolean(model.energized),
-        flowState: model.flowState || 'import',
-        powerMW: Number(model.powerMW) || 0,
-        _line: null,
-        _hit: null,
-        _bolt: null,
-        _pulseTween: null,
-        _pulseObj: null
-    };
+// Power cable creation disabled — stub
+PrototypeScene.prototype._createPowerCable = function (model) { return null; };
 
-    // Graphics for the visible black cable
-    const g = this.add.graphics();
-    cable._line = g;
-    // Invisible thicker hit area for interactions
-    const h = this.add.graphics();
-    cable._hit = h;
-
-    // Bolt marker
-    const boltStyle = { fontSize: '18px', color: '#ffffff' };
-    const bolt = this.add.text(0,0,'⚡', boltStyle).setOrigin(0.5);
-    bolt.setVisible(false);
-    cable._bolt = bolt;
-
-    // Draw/update function
-    const scene = this;
-    cable._redraw = function () {
-        const a = scene._getRecordCenter(cable.fromRecord);
-        const b = scene._getRecordCenter(cable.toRecord);
-        g.clear();
-        g.lineStyle(2, 0x000000, 1);
-        g.beginPath();
-        g.moveTo(a.x, a.y);
-        g.lineTo(b.x, b.y);
-        g.strokePath();
-
-        // hit area
-        h.clear();
-        h.lineStyle(8, 0x000000, 0);
-        h.beginPath();
-        h.moveTo(a.x, a.y);
-        h.lineTo(b.x, b.y);
-        h.strokePath();
-        try { h.setInteractive(new Phaser.Geom.Line(a.x, a.y, b.x, b.y), Phaser.Geom.Line.Contains); } catch (e) {}
-
-        // Position bolt initially
-        if (cable.energized && cable._bolt) {
-            cable._bolt.setVisible(true);
-        } else if (cable._bolt) {
-            cable._bolt.setVisible(false);
-        }
-    };
-
-    // Hover tooltip handling
-    const showTooltip = (pointer) => {
-        if (!scene._powerTooltipEl) {
-            const t = document.createElement('div');
-            t.id = 'power-tooltip';
-            t.style.position = 'absolute';
-            t.style.background = '#0b1220';
-            t.style.color = '#fff';
-            t.style.padding = '8px';
-            t.style.border = '1px solid rgba(255,255,255,0.06)';
-            t.style.fontSize = '12px';
-            t.style.zIndex = 10001;
-            document.body.appendChild(t);
-            scene._powerTooltipEl = t;
-        }
-        const t = scene._powerTooltipEl;
-        const mode = cable.energized ? 'Energized' : 'No power';
-        if (!cable.energized) {
-            t.innerHTML = `<strong>Electrical Cable</strong><br>Status: No power`;
-        } else {
-            const flow = cable.flowState === 'import' ? `${cable.fromRecord.type} → ${cable.toRecord.type}` : `${cable.fromRecord.type} → ${cable.toRecord.type}`;
-            const modeTxt = cable.flowState === 'export' ? 'Exporting' : (cable.flowState === 'import' ? 'Importing' : 'Balanced');
-            t.innerHTML = `<strong>Electrical Cable</strong><br>Status: Energized<br>Flow: ${flow}<br>Power: ${cable.powerMW} MW<br>Mode: ${modeTxt}`;
-        }
-        t.style.left = (pointer.clientX + 12) + 'px';
-        t.style.top = (pointer.clientY + 12) + 'px';
-        t.style.display = 'block';
-    };
-    const hideTooltip = () => {
-        if (scene._powerTooltipEl) scene._powerTooltipEl.style.display = 'none';
-    };
-
-    // Pointer events
-    h.on('pointerover', function (pointer) { showTooltip(pointer); });
-    h.on('pointerout', function () { hideTooltip(); });
-
-    // Start/stop pulse animation helpers
-    cable._startPulse = function () {
-        // avoid duplicate tweens
-        if (cable._pulseTween) return;
-        if (!cable.energized) return;
-        const a = scene._getRecordCenter(cable.fromRecord);
-        const b = scene._getRecordCenter(cable.toRecord);
-        const dir = cable.flowState === 'export' ? -1 : 1;
-        const obj = { t: dir === 1 ? 0 : 1 };
-        cable._pulseObj = obj;
-        const dur = scene._getPulseInterval(cable.powerMW);
-        cable._pulseTween = scene.tweens.add({
-            targets: obj,
-            t: dir === 1 ? 1 : 0,
-            duration: dur,
-            ease: 'Linear',
-            repeat: -1,
-            onUpdate: function () {
-                const t = obj.t;
-                const x = a.x + (b.x - a.x) * t;
-                const y = a.y + (b.y - a.y) * t;
-                if (cable._bolt) cable._bolt.setPosition(x, y);
-            }
-        });
-        // set bolt colour by flow state / hub mode
-        if (cable.flowState === 'export') {
-            cable._bolt.setStyle({ color: '#2f7df6' });
-            cable._bolt.setStroke('#8fc5ff', 1.5);
-        } else {
-            cable._bolt.setStyle({ color: '#e34848' });
-            try { cable._bolt.setStroke(null); } catch (e) {}
-        }
-    };
-
-    cable._stopPulse = function () {
-        if (cable._pulseTween) {
-            try { scene.tweens.killTweensOf(cable._pulseObj); } catch (e) {}
-            cable._pulseTween = null;
-            cable._pulseObj = null;
-        }
-        if (cable._bolt) cable._bolt.setVisible(false);
-    };
-
-    // Attach cable to scene storage
-    this._powerCables.set(id, cable);
-    cable._redraw();
-
-    // Start pulse if energized
-    if (cable.energized) cable._startPulse();
-
-    return cable;
-};
-
-PrototypeScene.prototype._removePowerCable = function (id) {
-    const cable = this._powerCables.get(id);
-    if (!cable) return;
-    try { if (cable._pulseTween) this.tweens.killTweensOf(cable._pulseObj); } catch (e) {}
-    if (cable._line && cable._line.destroy) cable._line.destroy();
-    if (cable._hit && cable._hit.destroy) cable._hit.destroy();
-    if (cable._bolt && cable._bolt.destroy) cable._bolt.destroy();
-    this._powerCables.delete(id);
-};
-
-PrototypeScene.prototype._removeCablesForRecord = function (record) {
-    const toRemove = [];
-    for (const [id, cable] of this._powerCables.entries()) {
-        if (cable.fromRecord === record || cable.toRecord === record) toRemove.push(id);
-    }
-    for (const id of toRemove) this._removePowerCable(id);
-    // recompute machine statuses after removal
-    this._recomputeMachineStatuses();
-};
-
-PrototypeScene.prototype._updateCablesForRecord = function (record) {
-    for (const cable of this._powerCables.values()) {
-        if (cable.fromRecord === record || cable.toRecord === record) {
-            if (typeof cable._redraw === 'function') cable._redraw();
-        }
-    }
-    // ensure bolts reposition if pulses active
-    // also recompute statuses
-    this._recomputeMachineStatuses();
-    // update power indicator UI
-    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
-};
+// Power cable operations are no-ops in this simplified UI
+PrototypeScene.prototype._removePowerCable = function (id) { return; };
+PrototypeScene.prototype._removeCablesForRecord = function (record) { this._recomputeMachineStatuses(); };
+PrototypeScene.prototype._updateCablesForRecord = function (record) { this._recomputeMachineStatuses(); };
 
 PrototypeScene.prototype._getPulseInterval = function (powerMW) {
     // Placeholder mapping; future scaling can use powerMW
@@ -1466,62 +1246,12 @@ PrototypeScene.prototype._getPulseInterval = function (powerMW) {
 };
 
 PrototypeScene.prototype.setDebugHubPowerMode = function (mode) {
-    this._hubPowerState.mode = mode;
-    // Simple behavior for demo: set all cables energized and flowState based on mode
-    for (const cable of this._powerCables.values()) {
-        if (mode === 'offline') {
-            cable.energized = false;
-            cable._stopPulse && cable._stopPulse();
-        } else if (mode === 'import') {
-            cable.energized = true;
-            cable.flowState = 'import';
-            cable._startPulse && cable._startPulse();
-        } else if (mode === 'export') {
-            cable.energized = true;
-            cable.flowState = 'export';
-            cable._startPulse && cable._startPulse();
-        } else {
-            cable.energized = true;
-            cable.flowState = 'balanced';
-            cable._startPulse && cable._startPulse();
-        }
-    }
+    // Disabled — power UI removed
     this._recomputeMachineStatuses();
-    if (typeof this._renderPowerIndicator === 'function') this._renderPowerIndicator();
 };
 
-PrototypeScene.prototype._renderPowerIndicator = function () {
-    const wrap = document.getElementById('power-indicator');
-    if (!wrap) return;
-    const state = this._hubPowerState || { mode: 'offline', importMW: 0, exportMW: 0, netMW: 0 };
-    wrap.innerHTML = '';
-    const icon = document.createElement('div');
-    icon.style.fontSize = '18px';
-    icon.style.marginBottom = '2px';
-    const label = document.createElement('div');
-    label.style.fontSize = '12px';
-    label.style.lineHeight = '1.1';
-    if (state.mode === 'import') {
-        icon.textContent = '⚡';
-        icon.style.color = '#e34848';
-        label.innerHTML = '<strong>Power</strong><br>Importing<br>' + (state.importMW || 0) + ' MW';
-    } else if (state.mode === 'export') {
-        icon.textContent = '⚡';
-        icon.style.color = '#2f7df6';
-        icon.style.webkitTextStroke = '1px #8fc5ff';
-        label.innerHTML = '<strong>Power</strong><br>Exporting<br>' + (state.exportMW || 0) + ' MW';
-    } else if (state.mode === 'balanced') {
-        icon.textContent = '⚡';
-        icon.style.color = '#9ca3af';
-        label.innerHTML = '<strong>Power</strong><br>Balanced<br>' + (state.netMW || 0) + ' MW';
-    } else {
-        icon.textContent = '⚡';
-        icon.style.color = '#6b7280';
-        label.innerHTML = '<strong>Power</strong><br>Offline';
-    }
-    wrap.appendChild(icon);
-    wrap.appendChild(label);
-};
+// Power indicator removed — no-op
+PrototypeScene.prototype._renderPowerIndicator = function () { return; };
 
     // Reserve all footprint cells in the occupancy map pointing to the same record
     for (let dx = 0; dx < fw; dx++) {
@@ -1729,7 +1459,7 @@ new Phaser.Game(config);
         // Accessibility label summarising resources
         svgWrap.setAttribute('aria-label', `Unresolved outputs chart: ${ariaParts.join('; ')}`);
         // Update power indicator UI if the simulator scene is available
-        try { if (window.__simulatorScene && typeof window.__simulatorScene._renderPowerIndicator === 'function') window.__simulatorScene._renderPowerIndicator(); } catch (e) {}
+        // Power indicator removed — no-op
     }
 
     // Initialize on DOM ready

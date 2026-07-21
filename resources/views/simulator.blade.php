@@ -27,7 +27,7 @@
                         <span>unresolved</span>
                     </div>
                 </div>
-                <div id="power-indicator" style="margin-left:12px; color:#fff; font-family: Arial, Helvetica, sans-serif;"></div>
+                <!-- power indicator removed per simplified UI -->
 
                 <div class="unresolved-output-legend" id="unresolved-output-legend" aria-live="polite">
                     <!-- legend rows rendered by simulator.js -->
