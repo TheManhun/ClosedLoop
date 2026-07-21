@@ -9,7 +9,7 @@ class PrototypeScene extends Phaser.Scene {
         // Load building and resource images from public/
         this.load.image('processingPlant', '/processingplant.png');
         this.load.image('trash', '/trash.png');
-        this.load.image('sorting_facility', '/sortingfactory.png');
+        this.load.image('sorting_facility', '/sorting.png');
         this.load.image('wastewater_headworks', '/waterwasteplant.png');
         // Resource images provided by user
         this.load.image('src_mw', '/trash.png');
