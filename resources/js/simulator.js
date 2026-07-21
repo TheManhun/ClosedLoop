@@ -1116,11 +1116,19 @@ PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
     const centerY = (fh * gs.minor) / 2 - 6;
     const img = this.add.image(centerX, centerY, textureKey);
 
-    // Force all building sprites to display at the same footprint-relative size
-    // so different source image dimensions appear consistently (matches `trash`).
-    const maxWidth = fw * gs.minor * 0.85;
-    const maxHeight = fh * gs.minor * 0.85;
-    img.setDisplaySize(maxWidth, maxHeight);
+    // Force building sprites to display at a consistent footprint-relative size.
+    // If a building uses a smaller footprint than the municipal waste source,
+    // upscale it so resource images appear the same size as the trash squares.
+    const refFootprint = (this._buildingDefs && this._buildingDefs.municipalWaste && this._buildingDefs.municipalWaste.footprint) ? this._buildingDefs.municipalWaste.footprint : [4, 4];
+    const refW = refFootprint[0];
+    const refH = refFootprint[1];
+    let displayW = fw * gs.minor * 0.85;
+    let displayH = fh * gs.minor * 0.85;
+    if (fw < refW || fh < refH) {
+        displayW = refW * gs.minor * 0.85;
+        displayH = refH * gs.minor * 0.85;
+    }
+    img.setDisplaySize(displayW, displayH);
     img.setOrigin(0.5, 0.5);
 
     // Add sprite only (no persistent name label or shortCode)
