@@ -22,6 +22,18 @@ function addComponent(type, worldPos){
 // toolbox
 const toolbox = new Toolbox({root: document.getElementById('toolbox'), onStartPlace: startPlacement});
 
+// Remove any stray toolbox-like elements that might have been left by prior dev iterations
+try{
+  Array.from(document.querySelectorAll('.toolbox')).forEach(el=>{ if(el.id !== 'toolbox'){ el.remove(); } });
+}catch(e){}
+
+// Clean up any obsolete saved Outputs panel state (development convenience)
+try{
+  localStorage.removeItem('panel_state_outputs');
+  localStorage.removeItem('panel-outputs');
+  localStorage.removeItem('outputs-panel');
+}catch(e){}
+
 // ghost placement
 let ghost = null;
 let placing = null;

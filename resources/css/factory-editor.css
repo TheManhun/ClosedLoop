@@ -8,31 +8,44 @@
   --glass: rgba(255,255,255,0.03);
 }
 html,body{height:100%;}
-.factory-editor-root{position:relative;display:flex;height:70vh;min-height:480px;border-radius:8px;overflow:hidden;background:linear-gradient(180deg,#071028 0%, #041026 100%);box-shadow:0 6px 30px rgba(2,6,23,0.6);}
+/* Transparent overlay so the Phaser canvas (#simulator-root) remains fully visible underneath.
+   This container only exists to host the toolbox and the (currently empty) viewport;
+   it must never render its own opaque background/panel. */
+.factory-editor-root{position:relative;display:flex;height:70vh;min-height:480px;background:transparent;pointer-events:none;}
+.factory-editor-root #toolbox{pointer-events:auto}
+.factory-editor-root .component-card{pointer-events:auto}
 
-/* Floating toolbox overlay */
-.toolbox{position:absolute;left:12px;top:12px;width:76px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;border:1px solid rgba(255,255,255,0.04);display:flex;flex-direction:column;padding:8px;transition:width .22s cubic-bezier(.2,.9,.2,1),transform .25s ease,opacity .25s ease;z-index:2200;box-shadow:0 10px 30px rgba(2,6,23,0.6);backdrop-filter: blur(6px);}
-.toolbox.closed{width:56px}
+/* Left fixed expandable toolbox */
+#toolbox, .toolbox{
+  position: fixed;
+  top: 34px;
+  left: 0;
+  bottom: 0;
+  width: 56px;
+  z-index: 11000;
+  overflow: hidden;
+  transition: width 180ms ease;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border-right: 1px solid rgba(255,255,255,0.03);
+  display:flex;flex-direction:column;padding:8px 6px;box-shadow:0 10px 30px rgba(2,6,23,0.6);backdrop-filter: blur(6px);
+}
+.toolbox.expanded, #toolbox.expanded{width:260px}
 .toolbox-header{display:flex;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.02);position:relative;touch-action:none;-webkit-user-select:none;user-select:none}
-.toolbox-toggle{background:transparent;border:0;color:var(--muted);font-size:16px;cursor:pointer;margin-right:8px}
-.toolbox-title{color:var(--muted);font-weight:600;display:none}
+.toolbox-toggle{background:transparent;border:0;color:var(--muted);font-size:18px;cursor:pointer;margin-right:8px}
+.toolbox-title{color:var(--muted);font-weight:600;margin-left:4px}
 .toolbox-resizer{display:none}
 .toolbox-body{flex:1;padding:8px 6px;overflow:auto}
-.toolbox-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;align-items:center}
-.toolbox-item{width:56px;text-align:center;background:var(--glass);padding:10px;border-radius:8px;color:#e6eef8;cursor:grab;box-shadow:0 6px 18px rgba(2,6,23,0.6);user-select:none;font-size:13px}
+.toolbox-items{list-style:none;margin:0;padding:8px 4px;display:flex;flex-direction:column;gap:8px}
+.toolbox-item{display:flex;align-items:center;gap:12px;width:100%;background:var(--glass);padding:10px;border-radius:8px;color:#e6eef8;cursor:grab;box-shadow:0 6px 18px rgba(2,6,23,0.6);user-select:none;font-size:13px}
 .toolbox-item:active{cursor:grabbing}
+.toolbox-item-icon{width:36px;flex:0 0 36px;text-align:center}
+.toolbox-item-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolbox:not(.expanded) .toolbox-item-label{display:none}
 
-.viewport{flex:1;position:relative;overflow:hidden}
+.viewport{flex:1;position:relative;overflow:hidden;background:transparent}
 .world{position:absolute;left:0;top:0;right:0;bottom:0;transform-origin:0 0;will-change:transform}
-
-.viewport{flex:1;position:relative;overflow:hidden}
-.world{position:absolute;left:0;top:0;right:0;bottom:0;transform-origin:0 0;will-change:transform}
-.grid{
-  position:absolute;left:0;top:0;right:0;bottom:0;background-image:
-    linear-gradient(#0b1630 1px, transparent 1px),
-    linear-gradient(90deg,#0b1630 1px, transparent 1px);
-  background-size:32px 32px,32px 32px;opacity:0.8;pointer-events:none;
-}
+/* Phaser already renders the simulator's own grid; hide the editor's duplicate grid overlay for now */
+.grid{display:none}
 .component-card{position:absolute;min-width:140px;padding:10px 12px;border-radius:6px;background:linear-gradient(180deg,#081026,#041226);color:#e6eef8;box-shadow:0 6px 18px rgba(2,6,23,0.6);transform-origin:center center;cursor:grab;user-select:none;border:1px solid rgba(255,255,255,0.03)}
 .component-card.selected{outline:2px solid var(--accent);box-shadow:0 10px 30px rgba(32,132,255,0.12)}
 .component-label{font-weight:600}
@@ -44,3 +57,5 @@ html,body{height:100%;}
 
 /* Responsive tweaks */
 @media (max-width:800px){.factory-editor-root{flex-direction:column;height:60vh}.toolbox{width:100%;height:104px;display:flex;flex-direction:row}.toolbox.closed{height:44px;width:100%}.viewport{height:calc(100% - 104px)}}
+
+/* end toolbox styles */

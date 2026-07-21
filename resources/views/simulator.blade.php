@@ -9,11 +9,10 @@
     <div class="simulator-root-wrapper" style="margin-top:1rem">
         <div id="simulator-root"></div>
         <div id="factory-editor-root" class="factory-editor-root">
-            <aside id="toolbox" class="toolbox closed" aria-label="Toolbox">
+            <aside id="toolbox" class="toolbox" aria-label="Toolbox">
                 <div class="toolbox-header">
                     <button id="toolbox-toggle" class="toolbox-toggle" aria-expanded="false">☰</button>
                     <div class="toolbox-title">Toolbox</div>
-                    <div id="toolbox-resizer" class="toolbox-resizer" title="Resize"></div>
                 </div>
                 <div class="toolbox-body" id="toolbox-body">
                     <ul id="toolbox-items" class="toolbox-items">
