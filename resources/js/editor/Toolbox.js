@@ -65,15 +65,30 @@ export default class Toolbox{
   }
   _bind(){
     // toggle expanded state
-    this.toggle.addEventListener('click', ()=>{
+    this.toggle.addEventListener('click', () => {
       const expanded = this.container.classList.toggle('expanded');
+
+      document.body.classList.toggle('toolbox-is-expanded', expanded);
+
       this.toggle.setAttribute('aria-expanded', String(expanded));
-      try{ localStorage.setItem('factory_toolbox_expanded', expanded? '1':'0'); }catch(e){}
+
+      try {
+        localStorage.setItem(
+          'factory_toolbox_expanded',
+          expanded ? '1' : '0'
+        );
+      } catch (e) {}
+
+      // Let Phaser detect the newly available canvas space
+      window.dispatchEvent(new Event('resize'));
     });
   }
-  _loadState(){
-    const expanded = localStorage.getItem('factory_toolbox_expanded');
-    if(expanded === '1') this.container.classList.add('expanded');
+  _loadState() {
+    const expanded = localStorage.getItem('factory_toolbox_expanded') === '1';
+
+    this.container.classList.toggle('expanded', expanded);
+    document.body.classList.toggle('toolbox-is-expanded', expanded);
+    this.toggle.setAttribute('aria-expanded', String(expanded));
   }
   
   _startPlace(e,item){

@@ -59,3 +59,15 @@ html,body{height:100%;}
 @media (max-width:800px){.factory-editor-root{flex-direction:column;height:60vh}.toolbox{width:100%;height:104px;display:flex;flex-direction:row}.toolbox.closed{height:44px;width:100%}.viewport{height:calc(100% - 104px)}}
 
 /* end toolbox styles */
+
+/* Push the simulator aside when the toolbox changes width */
+#simulator-root {
+  margin-left: 56px;
+  transition: margin-left 180ms ease;
+  min-width: 0;
+}
+
+/* Toolbox open */
+body.toolbox-is-expanded #simulator-root {
+  margin-left: 260px;
+}
