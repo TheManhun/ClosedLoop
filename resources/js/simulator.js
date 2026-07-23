@@ -211,6 +211,121 @@ class PrototypeScene extends Phaser.Scene {
                 suggestedNext: []
             }
         };
+        // Fetch machine definitions from API and augment _buildingDefs and toolbar
+        const fetchScene = this;
+        async function fetchAndBuildMachineToolbar() {
+            const url = '/api/machines';
+            try {
+                const res = await fetch(url, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
+                const machines = await res.json();
+                if (!Array.isArray(machines) || machines.length === 0) {
+                    // no machines returned; nothing to do
+                    return;
+                }
+
+                // Queue image loads for Phaser and extend building definitions
+                machines.forEach((m) => {
+                    const id = String(m.id);
+                    const imageKey = 'machine_' + id;
+                    // Map DB record into internal buildingDef shape; preserve sensible defaults
+                    fetchScene._buildingDefs[id] = Object.assign({
+                        name: m.name || ('Machine ' + id),
+                        image: imageKey,
+                        category: 'process',
+                        footprint: m.footprint || [2, 2],
+                        permanent: !!m.permanent,
+                        deletable: m.deletable !== false,
+                        movable: m.movable !== false,
+                        placeable: m.placeable !== false,
+                        suggestedNext: []
+                    }, fetchScene._buildingDefs[id] || {});
+
+                    // Load image from public root using provided filename
+                    if (m.image) {
+                        try {
+                            fetchScene.load.image(imageKey, '/' + m.image);
+                        } catch (e) {
+                            console.warn('Failed to queue image load for', m.image, e);
+                        }
+                    }
+                });
+
+                // Start the loader for any queued assets
+                try { fetchScene.load.start(); } catch (e) { /* ignore */ }
+
+                // Build toolbar DOM (simple buttons) if not present
+                let toolbarEl = document.getElementById('simulator-toolbar');
+                if (!toolbarEl) {
+                    toolbarEl = document.createElement('div');
+                    toolbarEl.id = 'simulator-toolbar';
+                    toolbarEl.className = 'simulator-toolbar';
+                    const wrapper = document.querySelector('.simulator-root-wrapper') || document.body;
+                    wrapper.appendChild(toolbarEl);
+                }
+
+                // Helper to create a button for a machine
+                function makeButton(defKey, def) {
+                    const btn = document.createElement('button');
+                    btn.className = 'toolbar-button';
+                    btn.id = 'place-' + defKey + '-btn';
+                    btn.textContent = def.name || defKey;
+                    btn.setAttribute('aria-pressed', 'false');
+                    btn.addEventListener('click', () => {
+                        const expanded = !(fetchScene._placementMode && fetchScene._placementDefKey === defKey);
+                        fetchScene._placementMode = expanded;
+                        fetchScene._placementDefKey = expanded ? defKey : null;
+                        // update active state on buttons
+                        document.querySelectorAll('.simulator-toolbar .toolbar-button').forEach(b => {
+                            b.classList.toggle('active', b === btn && expanded);
+                            b.setAttribute('aria-pressed', String(b === btn && expanded));
+                        });
+                        if (fetchScene._placementMode) {
+                            fetchScene._updateHover(fetchScene.input.activePointer);
+                        } else {
+                            try { fetchScene._hoverGraphics.clear(); } catch (e) {}
+                        }
+                    });
+                    return btn;
+                }
+
+                // Populate toolbar buttons (only placeable machines)
+                toolbarEl.innerHTML = '';
+                machines.forEach((m) => {
+                    const id = String(m.id);
+                    const def = fetchScene._buildingDefs[id];
+                    if (!def) return;
+                    if (def.placeable) {
+                        const btn = makeButton(id, def);
+                        toolbarEl.appendChild(btn);
+                    }
+                });
+
+            } catch (err) {
+                // Log error and show a small visible message; keep existing hardcoded defs
+                console.error('Failed to load machines from API:', err);
+                let msgEl = document.getElementById('simulator-api-error');
+                if (!msgEl) {
+                    msgEl = document.createElement('div');
+                    msgEl.id = 'simulator-api-error';
+                    msgEl.style.position = 'absolute';
+                    msgEl.style.top = '48px';
+                    msgEl.style.left = '8px';
+                    msgEl.style.zIndex = 20000;
+                    msgEl.style.background = 'rgba(255,75,75,0.9)';
+                    msgEl.style.color = '#fff';
+                    msgEl.style.padding = '6px 8px';
+                    msgEl.style.borderRadius = '6px';
+                    msgEl.style.fontSize = '13px';
+                    msgEl.textContent = 'Could not load machine definitions from API — using built-in defaults.';
+                    const wrapper = document.querySelector('.simulator-root-wrapper') || document.body;
+                    wrapper.appendChild(msgEl);
+                }
+            }
+        }
+
+        // Fire and forget: fetch machine definitions and build toolbar
+        try { fetchAndBuildMachineToolbar(); } catch (e) { console.warn('Machine toolbar init failed', e); }
         // Placeholders removed — images are loaded from public/ instead
         // Placement mode flag toggled by toolbar selection
         this._placementMode = false;
@@ -309,6 +424,14 @@ class PrototypeScene extends Phaser.Scene {
                     }
                     if (!anyOccupied) {
                         this._placeBuilding(ix, iy, defKey);
+                        // After placing exactly one building, exit placement mode and clear preview
+                        this._placementMode = false;
+                        this._placementDefKey = null;
+                        try { this._hoverGraphics.clear(); } catch (e) {}
+                        // Clear any toolbar button active states if present
+                        try {
+                            document.querySelectorAll('.simulator-toolbar .toolbar-button.active').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); });
+                        } catch (e) {}
                     }
                     // do not perform selection while placing
                     return;
@@ -339,6 +462,10 @@ class PrototypeScene extends Phaser.Scene {
                     this._drawSelection();
                     return;
                 }
+
+                // Clicked empty ground: clear any selection
+                this._selectedCell = null;
+                this._drawSelection();
 
                 // Clicking empty space: normal selection
                 this._selectedCell = { ix, iy };
@@ -574,8 +701,10 @@ class PrototypeScene extends Phaser.Scene {
             if (e.key === 'Escape' && this._placementMode) {
                 this._placementMode = false;
                 this._placementDefKey = null;
-                if (placeProcessBtn) { placeProcessBtn.classList.remove('active'); placeProcessBtn.setAttribute('aria-pressed', 'false'); }
-                this._hoverGraphics.clear();
+                // clear selection as well
+                try { this._selectedCell = null; this._drawSelection(); } catch (err) {}
+                try { document.querySelectorAll('.simulator-toolbar .toolbar-button.active').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); }); } catch (e) {}
+                try { this._hoverGraphics.clear(); } catch (e) {}
             }
         });
 
