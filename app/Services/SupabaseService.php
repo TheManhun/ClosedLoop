@@ -87,20 +87,107 @@ class SupabaseService
 
     /**
      * GET machine by primary key id
-     * Uses filter: ?id=eq.{id}&select=*
+     * Uses filter with nested relations to include machine_resources and machine_links
+     * Example select: id,name,description,category,image,configurable,power_required,water_required,footprint_x,footprint_y,machine_resources(direction,amount,unit,resource:id,name,category,image),machine_links(title,url,link_type,organisation,description,publication_date,verified)
      * @param mixed $id
      * @return array|null
      */
     public function getMachine(mixed $id): ?array
     {
-        $url = $this->baseUrl . '/rest/v1/machines?id=eq.' . rawurlencode((string)$id) . '&select=*';
+        // Use the actual relation name 'resources' (plural) inside machine_resources
+        // Include machine_technologies -> technologies relationship
+        $select = rawurlencode('id,name,description,category,image,configurable,power_required,water_required,footprint_x,footprint_y,machine_resources(direction,amount,unit,resources(id,name,category,image)),machine_links(title,url,link_type,organisation,description,publication_date,verified),machine_technologies(role,description,technologies(id,name,description,category,maturity_level,image,notes))');
+        $url = $this->baseUrl . '/rest/v1/machines?id=eq.' . rawurlencode((string)$id) . '&select=' . $select;
         try {
             $resp = Http::withHeaders($this->headers())
                 ->timeout(15)
                 ->get($url)
                 ->throw();
             $json = $resp->json();
-            return is_array($json) && count($json) ? $json[0] : null;
+            if (!is_array($json) || count($json) === 0) return null;
+            $m = $json[0];
+
+            // Normalize response into the expected shape
+            $out = [
+                'id' => $m['id'] ?? null,
+                'name' => $m['name'] ?? null,
+                'description' => $m['description'] ?? null,
+                'category' => $m['category'] ?? null,
+                'image' => $m['image'] ?? null,
+                'configurable' => isset($m['configurable']) ? boolval($m['configurable']) : false,
+                'power_required' => $m['power_required'] ?? null,
+                'water_required' => $m['water_required'] ?? null,
+                'footprint_x' => $m['footprint_x'] ?? null,
+                'footprint_y' => $m['footprint_y'] ?? null,
+                'resources' => [],
+                'links' => [],
+                'technologies' => [],
+            ];
+
+            // machine_resources relationship (if present)
+            // Normalize into flattened `resources` array with the shape requested by the API consumer.
+            if (!empty($m['machine_resources']) && is_array($m['machine_resources'])) {
+                foreach ($m['machine_resources'] as $mr) {
+                    // Supabase returns the joined resource under the relation name used in the select.
+                    // We requested `resources(...)` so prefer that, but be tolerant of either form.
+                    $resObj = $mr['resources'] ?? $mr['resource'] ?? null;
+                    // If the relation came back as an indexed array, take the first element
+                    if (is_array($resObj) && array_values($resObj) === $resObj) {
+                        $resObj = $resObj[0] ?? null;
+                    }
+
+                    $out['resources'][] = [
+                        'id' => $resObj['id'] ?? null,
+                        'name' => $resObj['name'] ?? null,
+                        'description' => $resObj['description'] ?? null,
+                        'category' => $resObj['category'] ?? null,
+                        'direction' => $mr['direction'] ?? null,
+                        'amount' => $mr['amount'] ?? null,
+                        'unit' => $mr['unit'] ?? null,
+                    ];
+                }
+            }
+
+            // machine_links relationship (if present)
+            if (!empty($m['machine_links']) && is_array($m['machine_links'])) {
+                foreach ($m['machine_links'] as $ln) {
+                    $out['links'][] = [
+                        'title' => $ln['title'] ?? null,
+                        'url' => $ln['url'] ?? null,
+                        'link_type' => $ln['link_type'] ?? null,
+                        'organisation' => $ln['organisation'] ?? null,
+                        'description' => $ln['description'] ?? null,
+                        'publication_date' => $ln['publication_date'] ?? null,
+                        'verified' => isset($ln['verified']) ? boolval($ln['verified']) : false,
+                    ];
+                }
+            }
+
+            // machine_technologies -> technologies relationship
+            if (!empty($m['machine_technologies']) && is_array($m['machine_technologies'])) {
+                foreach ($m['machine_technologies'] as $mt) {
+                    // joined technologies relation may be under 'technologies' or 'technology'
+                    $techObj = $mt['technologies'] ?? $mt['technology'] ?? null;
+                    // if array, take first
+                    if (is_array($techObj) && array_values($techObj) === $techObj) {
+                        $techObj = $techObj[0] ?? null;
+                    }
+                    if (!$techObj) continue;
+                    $out['technologies'][] = [
+                        'id' => $techObj['id'] ?? null,
+                        'name' => $techObj['name'] ?? null,
+                        'description' => $techObj['description'] ?? null,
+                        'category' => $techObj['category'] ?? null,
+                        'maturity_level' => $techObj['maturity_level'] ?? null,
+                        'image' => $techObj['image'] ?? null,
+                        'notes' => $techObj['notes'] ?? null,
+                        'role' => $mt['role'] ?? null,
+                        'relationship_description' => $mt['description'] ?? null,
+                    ];
+                }
+            }
+
+            return $out;
         } catch (RequestException $e) {
             $r = $e->response;
             $status = $r ? $r->status() : null;
