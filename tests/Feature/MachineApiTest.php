@@ -56,3 +56,8 @@ test('GET /api/machines/{id} returns 404 for missing machine', function () {
     $response = $this->get('/api/machines/999999');
     $response->assertStatus(404);
 });
+
+test('GET /api/machines/{id} returns 404 for invalid non-numeric id', function () {
+    $response = $this->get('/api/machines/undefined');
+    $response->assertStatus(404);
+});

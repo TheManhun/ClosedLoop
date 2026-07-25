@@ -33,6 +33,11 @@ class MachineController extends Controller
      */
     public function show($id): JsonResponse
     {
+        // Validate id: only numeric ids supported for API fetches
+        if (!is_numeric($id)) {
+            return response()->json(['message' => 'Not Found'], 404);
+        }
+
         $machine = $this->supabase->getMachine($id);
         if (is_null($machine)) {
             return response()->json(['message' => 'Not Found'], 404);

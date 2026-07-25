@@ -98,16 +98,34 @@ class PrototypeScene extends Phaser.Scene {
 
         // Expose machine info helper for InputHandler and other scene code
         this.showMachineInfoFor = async (record) => {
-            if (!record || !record.defKey) return;
-            const id = encodeURIComponent(String(record.defKey));
+            if (!record || record.defKey === undefined || record.defKey === null) return;
+            const defKey = record.defKey;
+
+            // If defKey is a non-numeric built-in definition, render from local building definitions
+            if (typeof defKey === 'string' && !/^[0-9]+$/.test(defKey)) {
+                const local = this._buildingDefs[defKey];
+                if (local) {
+                    try { this._machineInfoPanel.show(local, record); } catch (e) { /* ignore */ }
+                    return;
+                }
+            }
+
+            // defKey looks numeric (or is numeric-like); fetch from API but guard against invalid values
+            const id = encodeURIComponent(String(defKey));
+            if (!id || id === 'undefined') return;
             try {
                 const res = await fetch('/api/machines/' + id, { credentials: 'same-origin' });
                 if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
                 const m = await res.json();
                 if (!m) throw new Error('No machine data');
-                try { this._machineInfoPanel.show(m, record); } catch (e) { console.warn('machineInfoPanel.show failed', e); }
+                try { this._machineInfoPanel.show(m, record); } catch (e) { /* ignore */ }
             } catch (err) {
-                console.error('Failed to load machine info', err);
+                // fallback: try to show local definition if available
+                const local = this._buildingDefs[defKey];
+                if (local) {
+                    try { this._machineInfoPanel.show(local, record); } catch (e) { /* ignore */ }
+                    return;
+                }
                 try {
                     const panelEl = document.getElementById('machine-info-panel');
                     if (panelEl) { panelEl.innerHTML = '<div>Unable to load machine information.</div>'; panelEl.style.display = 'block'; }
