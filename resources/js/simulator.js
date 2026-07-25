@@ -5,6 +5,7 @@ import { CameraController } from './simulator/core/CameraController.js';
 import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
 import BuildingManager from './simulator/managers/BuildingManager.js';
 import InputHandler from './simulator/core/InputHandler.js';
+import MachineInfoPanel from './simulator/ui/MachineInfoPanel.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -87,6 +88,27 @@ class PrototypeScene extends Phaser.Scene {
         this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
         // InputHandler centralizes pointer and keyboard routing
         this._inputHandler = new InputHandler(this, this._buildingManager, this._cameraController);
+        // Machine info UI panel (pure DOM) - scene fetches data then delegates rendering
+        this._machineInfoPanel = new MachineInfoPanel();
+
+        // Expose machine info helper for InputHandler and other scene code
+        this.showMachineInfoFor = async (record) => {
+            if (!record || !record.defKey) return;
+            const id = encodeURIComponent(String(record.defKey));
+            try {
+                const res = await fetch('/api/machines/' + id, { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
+                const m = await res.json();
+                if (!m) throw new Error('No machine data');
+                try { this._machineInfoPanel.show(m, record); } catch (e) { console.warn('machineInfoPanel.show failed', e); }
+            } catch (err) {
+                console.error('Failed to load machine info', err);
+                try {
+                    const panelEl = document.getElementById('machine-info-panel');
+                    if (panelEl) { panelEl.innerHTML = '<div>Unable to load machine information.</div>'; panelEl.style.display = 'block'; }
+                } catch (e) {}
+            }
+        };
         // BuildingManager instantiated; do not mirror its private fields here.
 
         const fetchScene = this;
@@ -291,7 +313,7 @@ class PrototypeScene extends Phaser.Scene {
                     if (!record.movable) {
                         this._selectedCell = { ix: record.gridX, iy: record.gridY };
                         this._drawSelection();
-                        try { showMachineInfoFor(record); } catch (e) {}
+                        try { scene.showMachineInfoFor(record); } catch (e) {}
                         return;
                     }
                     // Start drag state (not yet dragging until threshold exceeded)
@@ -357,7 +379,7 @@ class PrototypeScene extends Phaser.Scene {
                         this._selectedCell = { ix: orig.x, iy: orig.y };
                         this._drawSelection();
                         // show machine info for this building if available
-                        try { const rec = this._buildingManager.getMachineAt(orig.x, orig.y); if (rec) showMachineInfoFor(rec); } catch (e) {}
+                        try { const rec = this._buildingManager.getMachineAt(orig.x, orig.y); if (rec) scene.showMachineInfoFor(rec); } catch (e) {}
                     }
 
                     // Clear drag preview graphics and reset state
@@ -628,11 +650,11 @@ class PrototypeScene extends Phaser.Scene {
             el.appendChild(statusBtn);
 
             // Ensure labels/selection update when menu is shown for a record
-            if (targetRecord) {
+                if (targetRecord) {
                 scene._selectedCell = { ix: targetRecord.gridX, iy: targetRecord.gridY };
                 scene._drawSelection();
                 // Also show machine info for this record when context menu opens
-                try { showMachineInfoFor(targetRecord); } catch (e) { /* ignore */ }
+                try { scene.showMachineInfoFor(targetRecord); } catch (e) { /* ignore */ }
             }
 
             // Position and show
@@ -767,217 +789,7 @@ PrototypeScene.prototype._drawGrid = function (force) {
             // Use BuildingManager to validate placement preview
             const canPlacePreview = this._buildingManager.canPlace(ix, iy, this._placementDefKey || 'processUnit');
             const occupied = !canPlacePreview;
-
-            // Machine info panel: create or reuse
-            function getOrCreateMachineInfoPanel() {
-                let el = document.getElementById('machine-info-panel');
-                if (el) return el;
-                el = document.createElement('div');
-                el.id = 'machine-info-panel';
-                el.style.position = 'absolute';
-                el.style.right = '12px';
-                el.style.top = '12px';
-                el.style.zIndex = 20000;
-                el.style.minWidth = '280px';
-                el.style.maxWidth = '420px';
-                el.style.background = 'rgba(8,12,18,0.95)';
-                el.style.color = '#fff';
-                el.style.padding = '12px';
-                el.style.borderRadius = '8px';
-                el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
-                el.style.fontSize = '13px';
-                el.style.display = 'none';
-                // Add a visible Close button in the top-right of the panel
-                const closeBtn = document.createElement('button');
-                closeBtn.textContent = 'Close';
-                closeBtn.style.position = 'absolute';
-                closeBtn.style.top = '8px';
-                closeBtn.style.right = '8px';
-                closeBtn.style.padding = '4px 8px';
-                closeBtn.style.cursor = 'pointer';
-                closeBtn.addEventListener('click', () => { el.style.display = 'none'; });
-                el.appendChild(closeBtn);
-                document.body.appendChild(el);
-                return el;
-            }
-
-            // Show machine details for a placed building record
-            async function showMachineInfoFor(record) {
-                if (!record || !record.defKey) return;
-                const panel = getOrCreateMachineInfoPanel();
-                panel.innerHTML = '<div>Loading machine data...</div>';
-                panel.style.display = 'block';
-
-                // Attempt to fetch by defKey (which is typically the machine id from DB)
-                const id = encodeURIComponent(String(record.defKey));
-                try {
-                    const res = await fetch('/api/machines/' + id, { credentials: 'same-origin' });
-                    if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
-                    const m = await res.json();
-                    if (!m) throw new Error('No machine data');
-                    renderMachineInfo(panel, m, record);
-                } catch (err) {
-                    console.error('Failed to load machine info', err);
-                    panel.innerHTML = '<div>Unable to load machine information.</div>';
-                    // keep panel visible but don't crash
-                }
-            }
-
-            // Expose machine info helper for InputHandler
-            scene.showMachineInfoFor = showMachineInfoFor;
-
-            function renderMachineInfo(panel, m, record) {
-                panel.innerHTML = '';
-                const title = document.createElement('div');
-                title.style.fontSize = '16px';
-                title.style.fontWeight = '700';
-                title.style.marginBottom = '8px';
-                title.textContent = m.name || 'Machine';
-                panel.appendChild(title);
-
-                if (m.description) {
-                    const desc = document.createElement('div');
-                    desc.style.marginBottom = '8px';
-                    desc.textContent = m.description;
-                    panel.appendChild(desc);
-                }
-
-                const meta = document.createElement('div');
-                meta.style.marginBottom = '8px';
-                meta.innerHTML = '<strong>Category:</strong> ' + (m.category || '—');
-                panel.appendChild(meta);
-
-                const pw = document.createElement('div');
-                pw.style.marginBottom = '8px';
-                pw.innerHTML = '<strong>Power required:</strong> ' + (m.power_required ?? '—') + '<br/><strong>Water required:</strong> ' + (m.water_required ?? '—');
-                panel.appendChild(pw);
-
-                // Inputs / Outputs (resources are expected to be flattened objects)
-                const resources = Array.isArray(m.resources) ? m.resources : [];
-                const inputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'input');
-                const outputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'output');
-
-                const listSection = document.createElement('div');
-                listSection.style.marginBottom = '8px';
-
-                // Inputs block
-                const inHeader = document.createElement('div'); inHeader.style.fontWeight = '600'; inHeader.textContent = 'Inputs';
-                listSection.appendChild(inHeader);
-                if (!inputs.length) {
-                    const none = document.createElement('div'); none.style.marginTop = '6px'; none.textContent = 'No inputs recorded.'; listSection.appendChild(none);
-                } else {
-                    const ul = document.createElement('ul'); ul.style.marginTop = '6px'; ul.style.marginBottom = '8px';
-                    for (const it of inputs) {
-                        const li = document.createElement('li');
-                        const name = it.name || 'Resource';
-                        const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
-                        li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                        if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = it.category; li.appendChild(cat); }
-                        if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
-                        ul.appendChild(li);
-                    }
-                    listSection.appendChild(ul);
-                }
-
-                // Outputs block
-                const outHeader = document.createElement('div'); outHeader.style.fontWeight = '600'; outHeader.textContent = 'Outputs';
-                listSection.appendChild(outHeader);
-                if (!outputs.length) {
-                    const none = document.createElement('div'); none.style.marginTop = '6px'; none.textContent = 'No outputs recorded.'; listSection.appendChild(none);
-                } else {
-                    const ul2 = document.createElement('ul'); ul2.style.marginTop = '6px'; ul2.style.marginBottom = '8px';
-                    for (const it of outputs) {
-                        const li = document.createElement('li');
-                        const name = it.name || 'Resource';
-                        const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
-                        li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                        if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = it.category; li.appendChild(cat); }
-                        if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
-                        ul2.appendChild(li);
-                    }
-                    listSection.appendChild(ul2);
-                }
-
-                panel.appendChild(listSection);
-
-                // Links
-                if (m.links && m.links.length) {
-                    const h = document.createElement('div'); h.style.fontWeight='600'; h.textContent='Research/Links'; panel.appendChild(h);
-                    for (const ln of m.links) {
-                        const row = document.createElement('div');
-                        row.style.marginTop = '8px';
-                        const t = document.createElement('div'); t.style.fontWeight='600'; t.textContent = ln.title || 'Link'; row.appendChild(t);
-                        const org = document.createElement('div'); org.style.fontSize='12px'; org.style.opacity=0.9; org.textContent = ln.organisation || ''; row.appendChild(org);
-                        const verified = document.createElement('div'); verified.style.fontSize='12px'; verified.style.marginTop='4px'; verified.innerHTML = (ln.verified ? '<span style="color:#38b000">✓ Verified</span>' : '<span style="color:#9aa0a6">Unverified</span>'); row.appendChild(verified);
-                        if (ln.description) { const d = document.createElement('div'); d.style.marginTop='6px'; d.style.fontSize='13px'; d.textContent = ln.description; row.appendChild(d); }
-                        const btn = document.createElement('button'); btn.textContent = 'Open Link'; btn.style.marginTop='6px'; btn.onclick = () => { if (ln.url) window.open(ln.url, '_blank'); }; row.appendChild(btn);
-                        panel.appendChild(row);
-                    }
-                }
-
-                // Technologies
-                const techs = (m.technologies || []);
-                const techSection = document.createElement('div');
-                techSection.style.marginTop = '8px';
-                const techHeader = document.createElement('div');
-                techHeader.style.fontWeight = '600';
-                techHeader.textContent = 'Technologies';
-                techSection.appendChild(techHeader);
-                if (!techs.length) {
-                    const none = document.createElement('div');
-                    none.style.marginTop = '6px';
-                    none.textContent = 'No technologies recorded.';
-                    techSection.appendChild(none);
-                } else {
-                    for (const t of techs) {
-                        const row = document.createElement('div');
-                        row.style.marginTop = '8px';
-                        const name = document.createElement('div'); name.style.fontWeight='700'; name.textContent = t.name || 'Technology'; row.appendChild(name);
-                        const meta = document.createElement('div'); meta.style.fontSize='13px'; meta.style.opacity=0.95; meta.innerHTML = '<strong>Role:</strong> ' + (t.role || '—') + ' &nbsp; <strong>Category:</strong> ' + (t.category || '—') + ' &nbsp; <strong>Maturity:</strong> ' + (t.maturity_level || '—'); row.appendChild(meta);
-                        if (t.description) { const d = document.createElement('div'); d.style.marginTop='6px'; d.textContent = t.description; row.appendChild(d); }
-                        techSection.appendChild(row);
-                    }
-                }
-                panel.appendChild(techSection);
-
-                // Configure button if configurable
-                if (m.configurable) {
-                    const cfg = document.createElement('div'); cfg.style.marginTop = '10px';
-                    const cfgBtn = document.createElement('button'); cfgBtn.textContent = 'Configure'; cfgBtn.style.fontWeight='600';
-                    cfgBtn.onclick = () => {
-                        try {
-                            // If the factory editor exists, open it but do NOT auto-create components.
-                            // Associating a persistent per-building component/config is not implemented yet.
-                            const fe = window.__factoryEditor;
-                            if (fe) {
-                                const root = document.getElementById('factory-editor-root');
-                                if (root) root.style.display = '';
-                                // If a component already exists that appears associated with this record, select it.
-                                // (No association system implemented — we avoid creating duplicates.)
-                                // Provide a clear message in the machine info panel about missing persistence.
-                                const panel = document.getElementById('machine-info-panel');
-                                if (panel) {
-                                    const note = document.createElement('div');
-                                    note.style.marginTop = '8px';
-                                    note.style.fontSize = '13px';
-                                    note.style.opacity = '0.9';
-                                    note.textContent = 'Factory editor opened. Per-building saved configuration is not implemented yet.';
-                                    panel.appendChild(note);
-                                }
-                                return;
-                            }
-
-                            // Fallback: dispatch event so other code can handle configuration
-                            const ev = new CustomEvent('machine:configure', { detail: { machine: m, record } });
-                            window.dispatchEvent(ev);
-                        } catch (e) {
-                            console.warn('machine configure handler failed', e);
-                        }
-                    };
-                    cfg.appendChild(cfgBtn);
-                    panel.appendChild(cfg);
-                }
-            }
+            // Machine info rendering delegated to MachineInfoPanel (instantiated in create())
 
             // valid: green translucent; invalid: red translucent
             const fillColor = occupied ? 0xff0000 : 0x10b981;
