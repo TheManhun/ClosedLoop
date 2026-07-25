@@ -106,7 +106,19 @@ class PrototypeScene extends Phaser.Scene {
                 // group
                 const groups = {};
                 machines.forEach(m => { const cat = (m.category||'other').toString(); groups[cat]=groups[cat]||[]; groups[cat].push(m); });
-                const categoryDisplay = (c)=>{ const map={source:'Sources',process:'Processing',infrastructure:'Energy',manufacturing:'Manufacturing',recycling:'Recycling',agriculture:'Agriculture',storage:'Storage',transport:'Transport',research:'Research',other:'Other'}; return map[c]|| (c.charAt(0).toUpperCase()+c.slice(1)); };
+                const categoryDisplay = (c)=>{ const map={
+                    agriculture: '🌿 Agriculture',
+                    process: '⚙ Processing',
+                    infrastructure: '⚡ Energy',
+                    manufacturing: '🏭 Manufacturing',
+                    recycling: '♻ Recycling',
+                    water: '💧 Water',
+                    storage: '📦 Storage',
+                    research: '🧪 Research',
+                    source: '📦 Sources',
+                    transport: '🚚 Transport',
+                    other: '• Other'
+                }; return map[c] || (c? (c.charAt(0).toUpperCase()+c.slice(1)) : 'Other'); };
                 Object.keys(groups).sort().forEach(cat=>{
                     const section=document.createElement('div'); section.className='toolbox-category';
                     const header=document.createElement('div'); header.className='toolbox-category-header'; header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.padding='6px 4px'; header.style.cursor='pointer';
@@ -117,7 +129,7 @@ class PrototypeScene extends Phaser.Scene {
                     groups[cat].forEach(m=>{
                         const card=document.createElement('div'); card.className='toolbox-card'; card.style.display='flex'; card.style.alignItems='center'; card.style.gap='10px'; card.style.padding='8px'; card.style.borderRadius='8px'; card.style.background='rgba(255,255,255,0.02)'; card.style.cursor='pointer'; card.style.wordBreak='break-word'; card.setAttribute('data-defkey', m.defKey||String(m.id));
                         const img=document.createElement('img'); img.src = m.icon ? ('/'+m.icon) : (m.image ? ('/'+m.image) : '/processingplant.png'); img.alt = m.name || ''; img.style.width='36px'; img.style.height='36px'; img.style.objectFit='contain'; img.style.flex='0 0 36px';
-                        const text=document.createElement('div'); text.style.flex='1'; const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight='600'; nm.style.fontSize='13px'; nm.style.lineHeight='1.2'; const catline=document.createElement('div'); catline.textContent = (m.category||''); catline.style.fontSize='12px'; catline.style.opacity='0.85'; text.appendChild(nm); text.appendChild(catline);
+                        const text=document.createElement('div'); text.style.flex='1'; const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight='600'; nm.style.fontSize='13px'; nm.style.lineHeight='1.2'; const catline=document.createElement('div'); catline.textContent = categoryDisplay(m.category||''); catline.style.fontSize='12px'; catline.style.opacity='0.85'; catline.className = 'toolbox-card-category'; text.appendChild(nm); text.appendChild(catline);
                         card.appendChild(img); card.appendChild(text);
                         card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = this._placementController; const key = m.defKey||String(m.id); if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} } });
                         list.appendChild(card);

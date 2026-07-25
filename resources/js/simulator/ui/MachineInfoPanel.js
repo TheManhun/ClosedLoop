@@ -38,6 +38,19 @@ export default class MachineInfoPanel {
 
     show(machine, record) {
         if (!machine) return;
+        const categoryDisplay = (c)=>{ const map={
+            agriculture: '🌿 Agriculture',
+            process: '⚙ Processing',
+            infrastructure: '⚡ Energy',
+            manufacturing: '🏭 Manufacturing',
+            recycling: '♻ Recycling',
+            water: '💧 Water',
+            storage: '📦 Storage',
+            research: '🧪 Research',
+            source: '📦 Sources',
+            transport: '🚚 Transport',
+            other: '• Other'
+        }; return map[c] || (c || 'Other'); };
         // Normalize newer machine schema into the shapes this panel expects
         const normalized = Object.assign({}, machine);
         // map camelCase power/water fields to legacy underscored names used elsewhere
@@ -88,7 +101,7 @@ export default class MachineInfoPanel {
 
         const meta = document.createElement('div');
         meta.style.marginBottom = '8px';
-        meta.innerHTML = '<strong>Category:</strong> ' + (normalized.category || '—');
+        meta.innerHTML = '<strong>Category:</strong> ' + (categoryDisplay(normalized.category) || '—');
         panel.appendChild(meta);
 
         const pw = document.createElement('div');
@@ -114,7 +127,7 @@ export default class MachineInfoPanel {
                 const name = it.name || 'Resource';
                 const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
                 li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = it.category; li.appendChild(cat); }
+                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = categoryDisplay(it.category); li.appendChild(cat); }
                 if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
                 ul.appendChild(li);
             }
@@ -132,7 +145,7 @@ export default class MachineInfoPanel {
                 const name = it.name || 'Resource';
                 const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
                 li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = it.category; li.appendChild(cat); }
+                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = categoryDisplay(it.category); li.appendChild(cat); }
                 if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
                 ul2.appendChild(li);
             }
@@ -164,7 +177,7 @@ export default class MachineInfoPanel {
             for (const t of techs) {
                 const row = document.createElement('div'); row.style.marginTop = '8px';
                 const name = document.createElement('div'); name.style.fontWeight='700'; name.textContent = t.name || 'Technology'; row.appendChild(name);
-                const meta = document.createElement('div'); meta.style.fontSize='13px'; meta.style.opacity=0.95; meta.innerHTML = '<strong>Role:</strong> ' + (t.role || '—') + ' &nbsp; <strong>Category:</strong> ' + (t.category || '—') + ' &nbsp; <strong>Maturity:</strong> ' + (t.maturity_level || '—'); row.appendChild(meta);
+                const meta = document.createElement('div'); meta.style.fontSize='13px'; meta.style.opacity=0.95; meta.innerHTML = '<strong>Role:</strong> ' + (t.role || '—') + ' &nbsp; <strong>Category:</strong> ' + (categoryDisplay(t.category) || '—') + ' &nbsp; <strong>Maturity:</strong> ' + (t.maturity_level || '—'); row.appendChild(meta);
                 if (t.description) { const d = document.createElement('div'); d.style.marginTop='6px'; d.textContent = t.description; row.appendChild(d); }
                 techSection.appendChild(row);
             }
