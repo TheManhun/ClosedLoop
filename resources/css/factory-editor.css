@@ -1,11 +1,11 @@
 /* Factory Editor styles - modern, clean, performant */
 :root{
-  --bg:#0f1724;
-  --panel:#0b1220;
-  --muted:#94a3b8;
-  --accent:#60a5fa;
-  --card:#0b1220;
-  --glass: rgba(255,255,255,0.03);
+  --bg:#111111;
+  --panel:#1B1B1B;
+  --muted:#bfc6c6; /* light grey category labels */
+  --accent:#2ECC71; /* thin green border */
+  --card:#1B1B1B;
+  --glass: rgba(255,255,255,0.02);
 }
 html,body{height:100%;}
 /* Transparent overlay so the Phaser canvas (#simulator-root) remains fully visible underneath.
@@ -16,31 +16,33 @@ html,body{height:100%;}
 .factory-editor-root .component-card{pointer-events:auto}
 
 /* Left fixed expandable toolbox */
-#toolbox, .toolbox{
+.toolbox, #toolbox {
   position: fixed;
   top: 34px;
   left: 0;
   bottom: 0;
-  width: 56px;
+  width: 300px;
   z-index: 11000;
-  overflow: hidden;
   transition: width 180ms ease;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  background: var(--bg);
   border-right: 1px solid rgba(255,255,255,0.03);
-  display:flex;flex-direction:column;padding:8px 6px;box-shadow:0 10px 30px rgba(2,6,23,0.6);backdrop-filter: blur(6px);
+  display:flex;flex-direction:column;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,0.6);backdrop-filter: blur(6px);
 }
-.toolbox.expanded, #toolbox.expanded{width:280px}
-.toolbox-header{display:flex;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.02);position:relative;touch-action:none;-webkit-user-select:none;user-select:none}
+.toolbox.expanded, #toolbox.expanded{width:300px}
+.toolbox-header{display:flex;align-items:center;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,0.03);position:relative;touch-action:none;-webkit-user-select:none;user-select:none}
 .toolbox-toggle{background:transparent;border:0;color:var(--muted);font-size:18px;cursor:pointer;margin-right:8px}
-.toolbox-title{color:var(--muted);font-weight:600;margin-left:4px}
+.toolbox-title{color:var(--muted);font-weight:700;margin-left:4px;color:#ffffff}
 .toolbox-resizer{display:none}
-.toolbox-body{flex:1;padding:8px 6px;overflow:auto}
-.toolbox-items{list-style:none;margin:0;padding:8px 4px;display:flex;flex-direction:column;gap:8px}
-.toolbox-item{display:flex;align-items:center;gap:12px;width:100%;background:var(--glass);padding:10px;border-radius:8px;color:#e6eef8;cursor:grab;box-shadow:0 6px 18px rgba(2,6,23,0.6);user-select:none;font-size:13px}
-.toolbox-item:active{cursor:grabbing}
-.toolbox-item-icon{width:36px;flex:0 0 36px;text-align:center}
-.toolbox-item-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.toolbox:not(.expanded) .toolbox-item-label{display:none}
+.toolbox-body{flex:1;padding:8px 4px;overflow:auto;position:relative}
+.toolbox-items{list-style:none;margin:0;padding:8px 4px;display:flex;flex-direction:column;gap:10px}
+.toolbox-card{display:flex;align-items:center;gap:12px;height:72px;padding:10px;border-radius:10px;background:var(--card);cursor:pointer;color:#ffffff;border:1px solid rgba(255,255,255,0.02);box-shadow:0 6px 18px rgba(0,0,0,0.6);transition:box-shadow 140ms ease, border-color 140ms ease}
+.toolbox-card:hover{box-shadow:0 10px 30px rgba(46,204,113,0.08);border-color:rgba(46,204,113,0.14)}
+.toolbox-card:active{transform:translateY(1px)}
+.toolbox-card-icon{flex:0 0 56px;width:56px;height:56px;border-radius:6px;overflow:hidden;background:#0a0a0a;display:flex;align-items:center;justify-content:center}
+.toolbox-card-icon img{width:56px;height:56px;object-fit:contain;display:block}
+.toolbox-card-body{display:flex;flex-direction:column;flex:1;min-width:0}
+.toolbox-card-name{color:#ffffff;font-weight:700;font-size:15px;line-height:1.1;margin:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.toolbox-card-category{color:var(--muted);font-size:12px;margin-top:6px}
 
 .viewport{flex:1;position:relative;overflow:hidden;background:transparent}
 .world{position:absolute;left:0;top:0;right:0;bottom:0;transform-origin:0 0;will-change:transform}
@@ -53,7 +55,15 @@ html,body{height:100%;}
 .ghost{position:fixed;pointer-events:none;opacity:0.9;transform:translate(-50%,-50%);z-index:9999}
 /* scrollbar and accessibility */
 .toolbox-body::-webkit-scrollbar{width:10px}
-.toolbox-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.03);border-radius:6px}
+.toolbox-body::-webkit-scrollbar-track{background:#0f0f0f}
+.toolbox-body::-webkit-scrollbar-thumb{background:#222;border-radius:6px}
+.toolbox-body::-webkit-scrollbar-thumb:hover{background:#333}
+
+/* Make the search bar sticky at the top of the toolbox body */
+.toolbox-search{position:sticky;top:0;background:transparent;padding:8px 0;margin-bottom:8px;z-index:5}
+
+/* Category header label styling */
+.toolbox-category-label{color:var(--muted);font-size:12px;padding:6px 4px}
 
 /* Responsive tweaks */
 @media (max-width:800px){.factory-editor-root{flex-direction:column;height:60vh}.toolbox{width:100%;height:104px;display:flex;flex-direction:row}.toolbox.closed{height:44px;width:100%}.viewport{height:calc(100% - 104px)}}
