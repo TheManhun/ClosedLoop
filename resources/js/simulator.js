@@ -265,21 +265,22 @@ class PrototypeScene extends Phaser.Scene {
                             groups[cat].push(m);
                         });
 
-                        // Category display name mapping
+                        // Category display name mapping (emoji + name)
                         const categoryDisplay = (c) => {
                             const map = {
-                                source: 'Sources',
-                                process: 'Processing',
-                                infrastructure: 'Energy',
-                                manufacturing: 'Manufacturing',
-                                recycling: 'Recycling',
-                                agriculture: 'Agriculture',
-                                storage: 'Storage',
-                                transport: 'Transport',
-                                research: 'Research',
-                                other: 'Other'
+                                agriculture: '🌿 Agriculture',
+                                process: '⚙ Processing',
+                                infrastructure: '⚡ Energy',
+                                manufacturing: '🏭 Manufacturing',
+                                recycling: '♻ Recycling',
+                                water: '💧 Water',
+                                storage: '📦 Storage',
+                                research: '🧪 Research',
+                                source: '📦 Sources',
+                                transport: '🚚 Transport',
+                                other: '• Other'
                             };
-                            return map[c] || (c.charAt(0).toUpperCase() + c.slice(1));
+                            return map[c] || (c ? (c.charAt(0).toUpperCase() + c.slice(1)) : 'Other');
                         };
 
                         // Create category sections
@@ -340,7 +341,7 @@ class PrototypeScene extends Phaser.Scene {
                                 const text = document.createElement('div');
                                 text.style.flex = '1';
                                 const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight = '600'; nm.style.fontSize = '13px'; nm.style.lineHeight = '1.2';
-                                const catline = document.createElement('div'); catline.textContent = (m.category || '').toString(); catline.style.fontSize = '12px'; catline.style.opacity = '0.85';
+                                const catline = document.createElement('div'); catline.textContent = categoryDisplay((m.category || '').toString()); catline.style.fontSize = '12px'; catline.style.opacity = '0.85'; catline.className = 'toolbox-card-category';
                                 text.appendChild(nm); text.appendChild(catline);
 
                                 card.appendChild(img); card.appendChild(text);
