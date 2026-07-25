@@ -1,5 +1,6 @@
 export default class ContextMenu {
     constructor(options = {}) {
+        // options.onAction(action, payload)
         this.options = Object.assign({}, options);
         this.el = document.getElementById('simulator-context-menu') || null;
         this._ensureElement();
@@ -58,6 +59,13 @@ export default class ContextMenu {
         return { x: left, y: top };
     }
 
+    position(clientX, clientY) {
+        if (!this.el) return;
+        const pos = this._clampMenuPosition(clientX, clientY);
+        this.el.style.left = pos.x + 'px';
+        this.el.style.top = pos.y + 'px';
+    }
+
     show(record, clientX, clientY) {
         const el = this._ensureElement();
         el.innerHTML = '';
@@ -84,7 +92,7 @@ export default class ContextMenu {
                 btn.style.display = 'block';
                 btn.style.width = '100%';
                 btn.style.marginBottom = '6px';
-                btn.onclick = () => { if (this.options.onSuggested) this.options.onSuggested(s.defKey); };
+                btn.onclick = () => { if (this.options.onAction) this.options.onAction('suggested', s.defKey); };
                 el.appendChild(btn);
             }
         } else if (record) {
@@ -105,10 +113,7 @@ export default class ContextMenu {
             delBtn.style.display = 'block';
             delBtn.style.width = '100%';
             delBtn.style.margin = '6px 0';
-            delBtn.onclick = () => {
-                if (this.options.onDelete) this.options.onDelete(record);
-                this.hide();
-            };
+            delBtn.onclick = () => { if (this.options.onAction) this.options.onAction('delete', record); this.hide(); };
             el.appendChild(delBtn);
         }
 
@@ -118,37 +123,32 @@ export default class ContextMenu {
         infoBtn.style.display = 'block';
         infoBtn.style.width = '100%';
         infoBtn.style.margin = '6px 0';
-        infoBtn.onclick = () => { if (this.options.onInfo) this.options.onInfo(record); this.hide(); };
+        infoBtn.onclick = () => { if (this.options.onAction) this.options.onAction('info', record); this.hide(); };
         el.appendChild(infoBtn);
 
         // Toolbar toggle
         const toolbarBtn = document.createElement('button');
-        const toolbarVisible = this.options.isToolbarVisible ? this.options.isToolbarVisible() : true;
-        toolbarBtn.textContent = toolbarVisible ? 'Hide Toolbar' : 'Show Toolbar';
-        toolbarBtn.onclick = () => { if (this.options.onToggleToolbar) this.options.onToggleToolbar(); this.hide(); };
+        toolbarBtn.textContent = 'Toggle Toolbar';
+        toolbarBtn.onclick = () => { if (this.options.onAction) this.options.onAction('toggleToolbar', null); this.hide(); };
         el.appendChild(toolbarBtn);
 
         // Machine Status Colours toggle
         const statusBtn = document.createElement('button');
-        const statusOn = this.options.isStatusOn ? this.options.isStatusOn() : true;
-        statusBtn.textContent = statusOn ? 'Machine Status Colours: On' : 'Machine Status Colours: Off';
+        statusBtn.textContent = 'Toggle Machine Status Colours';
         statusBtn.style.display = 'block';
         statusBtn.style.width = '100%';
         statusBtn.style.margin = '6px 0';
-        statusBtn.onclick = () => {
-            if (this.options.onToggleStatus) this.options.onToggleStatus();
-            this.hide();
-        };
+        statusBtn.onclick = () => { if (this.options.onAction) this.options.onAction('toggleStatus', null); this.hide(); };
         el.appendChild(statusBtn);
 
-        // Rotate / Upgrade placeholders (disabled if no handlers)
+        // Rotate / Upgrade placeholders
         const rotateBtn = document.createElement('button');
         rotateBtn.textContent = 'Rotate';
         rotateBtn.style.display = 'block';
         rotateBtn.style.width = '100%';
         rotateBtn.style.margin = '6px 0';
-        rotateBtn.disabled = typeof this.options.onRotate !== 'function';
-        rotateBtn.onclick = () => { if (this.options.onRotate) this.options.onRotate(record); this.hide(); };
+        rotateBtn.disabled = true;
+        rotateBtn.onclick = () => { if (this.options.onAction) this.options.onAction('rotate', record); this.hide(); };
         el.appendChild(rotateBtn);
 
         const upgradeBtn = document.createElement('button');
@@ -156,18 +156,11 @@ export default class ContextMenu {
         upgradeBtn.style.display = 'block';
         upgradeBtn.style.width = '100%';
         upgradeBtn.style.margin = '6px 0';
-        upgradeBtn.disabled = typeof this.options.onUpgrade !== 'function';
-        upgradeBtn.onclick = () => { if (this.options.onUpgrade) this.options.onUpgrade(record); this.hide(); };
+        upgradeBtn.disabled = true;
+        upgradeBtn.onclick = () => { if (this.options.onAction) this.options.onAction('upgrade', record); this.hide(); };
         el.appendChild(upgradeBtn);
 
-        // Ensure selection/update callbacks are invoked
-        if (record && this.options.onShowForRecord) this.options.onShowForRecord(record);
-
         el.style.display = 'block';
-        requestAnimationFrame(() => {
-            const pos = this._clampMenuPosition(clientX, clientY);
-            el.style.left = pos.x + 'px';
-            el.style.top = pos.y + 'px';
-        });
+        requestAnimationFrame(() => { this.position(clientX, clientY); });
     }
 }

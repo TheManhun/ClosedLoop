@@ -523,24 +523,43 @@ class PrototypeScene extends Phaser.Scene {
         }
         // Instantiate ContextMenu with callbacks into the scene
         this._contextMenu = new ContextMenu({
-            onDelete: (rec) => { try { deleteBuilding(rec); } catch (e) { console.warn(e); } },
-            onInfo: (rec) => { try { scene.showMachineInfoFor(rec); } catch (e) {} },
-            onSuggested: (defKey) => { try { handleSuggestedMachine(defKey); } catch (e) {} },
-            onToggleToolbar: () => { if (toolbarEl) toggleToolbar(); },
-            isToolbarVisible: () => toolbarEl && toolbarEl.style.display !== 'none',
-            onToggleStatus: () => { scene._sceneSettings.showMachineStatusColours = !scene._sceneSettings.showMachineStatusColours; if (typeof scene._recomputeMachineStatuses === 'function') scene._recomputeMachineStatuses(); },
-            isStatusOn: () => scene._sceneSettings.showMachineStatusColours,
-            onRotate: null,
-            onUpgrade: null,
-            onShowForRecord: (rec) => {
-                // keep selection visible when menu opens
-                if (rec) { scene._selectedCell = { ix: rec.gridX, iy: rec.gridY }; scene._drawSelection(); }
+            onAction: (action, payload) => {
+                try {
+                    switch (action) {
+                        case 'delete':
+                            deleteBuilding(payload);
+                            break;
+                        case 'info':
+                            scene.showMachineInfoFor(payload);
+                            break;
+                        case 'suggested':
+                            handleSuggestedMachine(payload);
+                            break;
+                        case 'toggleToolbar':
+                            toggleToolbar();
+                            break;
+                        case 'toggleStatus':
+                            scene._sceneSettings.showMachineStatusColours = !scene._sceneSettings.showMachineStatusColours;
+                            if (typeof scene._recomputeMachineStatuses === 'function') scene._recomputeMachineStatuses();
+                            break;
+                        case 'rotate':
+                        case 'upgrade':
+                            // not implemented yet
+                            break;
+                        default:
+                            break;
+                    }
+                } catch (e) { console.warn('ContextMenu action handler failed', e); }
             }
         });
 
         // Expose thin wrappers expected by InputHandler and CameraController
         scene.showContextMenuFor = function (targetType, targetRecord, clientX, clientY) {
-            try { scene._contextMenu.show(targetRecord, clientX, clientY); } catch (e) { console.warn(e); }
+            try {
+                // Keep selection visible when showing menu for a building
+                if (targetRecord) { scene._selectedCell = { ix: targetRecord.gridX, iy: targetRecord.gridY }; scene._drawSelection(); }
+                scene._contextMenu.show(targetRecord, clientX, clientY);
+            } catch (e) { console.warn(e); }
         };
         scene.hideContextMenu = function () { try { scene._contextMenu.hide(); } catch (e) {} };
 
