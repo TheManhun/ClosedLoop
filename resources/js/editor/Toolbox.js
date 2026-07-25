@@ -22,11 +22,15 @@ export const sortingFactoryEquipment = [
 export default class Toolbox{
   constructor({root, onStartPlace}){
     this.root = root;
+    // instance created
     this.onStartPlace = (payload) => {
       const scene = window.__simulatorScene;
       if (scene && payload && payload.defKey) {
-        scene._placementMode = true;
-        scene._placementDefKey = payload.defKey;
+        if (scene._placementController && typeof scene._placementController.beginPlacement === 'function') {
+          try { scene._placementController.beginPlacement(payload.defKey); } catch (e) { /* ignore */ }
+        } else if (onStartPlace) {
+          onStartPlace(payload);
+        }
       } else if (onStartPlace) {
         onStartPlace(payload);
       }
@@ -45,6 +49,21 @@ export default class Toolbox{
       // fixed left sidebar; sizing and positioning handled by CSS
     }catch(e){}
     this._renderItems();
+    // delegate pointerdown at root to ensure clicks on children trigger placement
+    try {
+      if (this.container) {
+        this.container.addEventListener('pointerdown', (e) => {
+          try {
+            const li = e.target.closest && e.target.closest('.toolbox-item');
+            if (!li) return;
+            const idx = Array.from(this.list.children).indexOf(li);
+            if (idx >= 0 && this.items && this.items[idx]) {
+              this._startPlace(e, this.items[idx]);
+            }
+          } catch (ee) {}
+        }, true);
+      }
+    } catch (e) {}
     this._loadState();
     this._bind();
   }
@@ -57,8 +76,22 @@ export default class Toolbox{
       // icon + label layout so collapsed state can hide labels
       const imgHtml = `<img src="${it.image}" alt="${it.name}" style="max-width:36px;max-height:36px;object-fit:contain">`;
       li.innerHTML = `<div class="toolbox-item-icon">${imgHtml}</div><div class="toolbox-item-label">${it.name}</div>`;
-      // pointerdown will start the (DOM) ghost placement flow
-      li.addEventListener('pointerdown', (e)=>this._startPlace(e, it));
+      // pointerdown will start the (DOM) ghost placement flow — attach on li and its children to be robust
+      li.addEventListener('pointerdown', (e) => this._startPlace(e, it));
+      // also set onclick handlers as a robust fallback for synthetic events
+      try {
+        const imgEl = li.querySelector('img');
+        if (imgEl) {
+          imgEl.addEventListener('pointerdown', (e) => this._startPlace(e, it));
+          imgEl.onclick = (e) => this._startPlace(e, it);
+        }
+        const labelEl = li.querySelector('.toolbox-item-label');
+        if (labelEl) {
+          labelEl.addEventListener('pointerdown', (e) => this._startPlace(e, it));
+          labelEl.onclick = (e) => this._startPlace(e, it);
+        }
+        li.onclick = (e) => this._startPlace(e, it);
+      } catch (e) {}
 
       this.list.appendChild(li);
     });

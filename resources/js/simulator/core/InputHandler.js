@@ -75,17 +75,9 @@ export default class InputHandler {
         const ix = Math.floor(world.x / gs.minor);
         const iy = Math.floor(world.y / gs.minor);
 
-        // Placement mode: attempt placement via BuildingManager
-        if (this.scene._placementMode) {
-            const defKey = this.scene._placementDefKey || 'processUnit';
-            if (this.buildingManager.canPlace(ix, iy, defKey)) {
-                this.buildingManager.placeMachine(ix, iy, defKey);
-            }
-            // exit placement mode
-            this.scene._placementMode = false;
-            this.scene._placementDefKey = null;
-            try { this.scene._hoverGraphics.clear(); } catch (e) {}
-            try { document.querySelectorAll('.simulator-toolbar .toolbar-button.active').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); }); } catch (e) {}
+        // Placement mode delegated to PlacementController when present
+        if (this.scene._placementController && this.scene._placementController.isPlacing()) {
+            try { this.scene._placementController.handlePointerDown(pointer); } catch (e) { /* ignore */ }
             return;
         }
 
@@ -175,8 +167,14 @@ export default class InputHandler {
             }
         }
 
-        // Not dragging: update hover via scene helper
-        try { if (typeof this.scene._updateHover === 'function') this.scene._updateHover(pointer); } catch (e) {}
+        // Not dragging: if placement controller active, let it handle hover, otherwise call scene helper
+        try {
+            if (this.scene._placementController && this.scene._placementController.isPlacing()) {
+                this.scene._placementController.handlePointerMove(pointer);
+            } else if (typeof this.scene._updateHover === 'function') {
+                this.scene._updateHover(pointer);
+            }
+        } catch (e) {}
     }
 
     _onPointerUp(pointer) {
@@ -229,14 +227,13 @@ export default class InputHandler {
         if (ev.key === 'Escape') {
             // Always hide context menu on Escape
             try { if (typeof this.scene.hideContextMenu === 'function') this.scene.hideContextMenu(); } catch (e) {}
-            if (this.scene._placementMode) {
-            this.scene._placementMode = false;
-            this.scene._placementDefKey = null;
-            try { this.scene._selectedCell = null; if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection(); } catch (err) {}
-            try { document.querySelectorAll('.simulator-toolbar .toolbar-button.active').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); }); } catch (e) {}
-            try { this.scene._hoverGraphics.clear(); } catch (e) {}
-            return;
-            }
+            // Delegate placement cancel to controller if active
+            try {
+                if (this.scene._placementController && this.scene._placementController.isPlacing()) {
+                    this.scene._placementController.cancelPlacement();
+                    return;
+                }
+            } catch (e) {}
         }
 
         // Delete / Backspace for selected building
@@ -251,7 +248,7 @@ export default class InputHandler {
     }
 
     _onDocumentPointerDown(ev) {
-        const el = this.scene._contextMenuEl;
+        const el = (this.scene._contextMenu && this.scene._contextMenu.el) || null;
         if (el) {
             if (ev.button === 0 && !el.contains(ev.target)) {
                 try { if (typeof this.scene.hideContextMenu === 'function') this.scene.hideContextMenu(); } catch (e) {}

@@ -89,6 +89,10 @@ class PrototypeScene extends Phaser.Scene {
         this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
         // InputHandler centralizes pointer and keyboard routing
         this._inputHandler = new InputHandler(this, this._buildingManager, this._cameraController);
+        // PlacementController handles placement lifecycle and preview
+        import('./simulator/controllers/PlacementController.js').then(mod => {
+            try { this._placementController = new mod.default(this, this._buildingManager); } catch (e) { /* ignore */ }
+        }).catch(e => { /* ignore */ });
         // Machine info UI panel (pure DOM) - scene fetches data then delegates rendering
         this._machineInfoPanel = new MachineInfoPanel();
 
@@ -166,19 +170,23 @@ class PrototypeScene extends Phaser.Scene {
                     btn.textContent = def.name || defKey;
                     btn.setAttribute('aria-pressed', 'false');
                     btn.addEventListener('click', () => {
-                        const expanded = !(fetchScene._placementMode && fetchScene._placementDefKey === defKey);
-                        fetchScene._placementMode = expanded;
-                        fetchScene._placementDefKey = expanded ? defKey : null;
+                        const controller = fetchScene._placementController;
+                        if (!controller) return;
+                        const expanded = !(controller.isPlacing() && controller.getGhost && controller.getGhost().defKey === defKey);
+                        if (expanded) {
+                            try { controller.beginPlacement(defKey); } catch (e) { /* ignore */ }
+                        } else {
+                            try { controller.cancelPlacement(); } catch (e) { /* ignore */ }
+                        }
                         // update active state on buttons
                         document.querySelectorAll('.simulator-toolbar .toolbar-button').forEach(b => {
                             b.classList.toggle('active', b === btn && expanded);
                             b.setAttribute('aria-pressed', String(b === btn && expanded));
                         });
-                        if (fetchScene._placementMode) {
-                            fetchScene._updateHover(fetchScene.input.activePointer);
-                        } else {
-                            try { fetchScene._hoverGraphics.clear(); } catch (e) {}
-                        }
+                        try {
+                            if (controller.isPlacing()) controller.handlePointerMove(fetchScene.input.activePointer);
+                            else fetchScene._hoverGraphics.clear();
+                        } catch (e) {}
                     });
                     return btn;
                 }
@@ -236,10 +244,7 @@ class PrototypeScene extends Phaser.Scene {
             }
         });
         // Placeholders removed — images are loaded from public/ instead
-        // Placement mode flag toggled by toolbar selection
-        this._placementMode = false;
-        // Currently selected placement definition key (e.g. 'municipalWaste' or 'processUnit')
-        this._placementDefKey = null;
+        // Placement state is owned by PlacementController; do not mutate legacy flags here.
         // Track whether the initial permanent source buildings have been placed
         this._initialSourcesPlaced = false;
         // Global toggle for showing building names
@@ -470,15 +475,21 @@ class PrototypeScene extends Phaser.Scene {
         const placeProcessBtn = document.getElementById('place-process-unit-btn');
         if (placeProcessBtn) {
             placeProcessBtn.addEventListener('click', () => {
-                // toggle placement mode specifically for processUnit
-                this._placementMode = !this._placementMode;
-                this._placementDefKey = this._placementMode ? 'processUnit' : null;
-                placeProcessBtn.classList.toggle('active', this._placementMode);
-                placeProcessBtn.setAttribute('aria-pressed', String(this._placementMode));
-                if (this._placementMode) {
-                    this._updateHover(this.input.activePointer);
+                // toggle placement via PlacementController when available
+                const controller = this._placementController;
+                const active = controller && controller.isPlacing() && controller.getGhost().defKey === 'processUnit';
+                if (!active && controller) {
+                    controller.beginPlacement('processUnit');
+                    placeProcessBtn.classList.add('active');
+                    placeProcessBtn.setAttribute('aria-pressed', 'true');
+                    controller.handlePointerMove(this.input.activePointer);
+                } else if (controller) {
+                    controller.cancelPlacement();
+                    placeProcessBtn.classList.remove('active');
+                    placeProcessBtn.setAttribute('aria-pressed', 'false');
+                    try { this._hoverGraphics.clear(); } catch (e) {}
                 } else {
-                    this._hoverGraphics.clear();
+                    // placement controller not ready; no-op
                 }
             });
         }
@@ -487,14 +498,20 @@ class PrototypeScene extends Phaser.Scene {
         const placeSortingBtn = document.getElementById('place-sorting-facility-btn');
         if (placeSortingBtn) {
             placeSortingBtn.addEventListener('click', () => {
-                this._placementMode = !this._placementMode;
-                this._placementDefKey = this._placementMode ? 'sortingFacility' : null;
-                placeSortingBtn.classList.toggle('active', this._placementMode);
-                placeSortingBtn.setAttribute('aria-pressed', String(this._placementMode));
-                if (this._placementMode) {
-                    this._updateHover(this.input.activePointer);
+                const controller = this._placementController;
+                const active = controller && controller.isPlacing() && controller.getGhost().defKey === 'sortingFacility';
+                if (!active && controller) {
+                    controller.beginPlacement('sortingFacility');
+                    placeSortingBtn.classList.add('active');
+                    placeSortingBtn.setAttribute('aria-pressed', 'true');
+                    controller.handlePointerMove(this.input.activePointer);
+                } else if (controller) {
+                    controller.cancelPlacement();
+                    placeSortingBtn.classList.remove('active');
+                    placeSortingBtn.setAttribute('aria-pressed', 'false');
+                    try { this._hoverGraphics.clear(); } catch (e) {}
                 } else {
-                    this._hoverGraphics.clear();
+                    // placement controller not ready; no-op
                 }
             });
         }
@@ -518,7 +535,6 @@ class PrototypeScene extends Phaser.Scene {
         const scene = this;
 
         function handleSuggestedMachine(defKey) {
-            console.log('Suggested machine clicked:', defKey);
             // placeholder: future hook
         }
         // Instantiate ContextMenu with callbacks into the scene
@@ -673,29 +689,9 @@ PrototypeScene.prototype._drawGrid = function (force) {
         const g = this._hoverGraphics;
         g.clear();
 
-        // If placement mode active, show placement preview (valid vs invalid)
-        if (this._placementMode) {
-            const def = this._buildingDefs[this._placementDefKey || 'processUnit'];
-            const [fw, fh] = def.footprint;
-            // Use BuildingManager to validate placement preview
-            const canPlacePreview = this._buildingManager.canPlace(ix, iy, this._placementDefKey || 'processUnit');
-            const occupied = !canPlacePreview;
-            // Machine info rendering delegated to MachineInfoPanel (instantiated in create())
-
-            // valid: green translucent; invalid: red translucent
-            const fillColor = occupied ? 0xff0000 : 0x10b981;
-            const fillAlpha = occupied ? 0.16 : 0.18;
-            g.fillStyle(fillColor, fillAlpha);
-            g.fillRect(ix * gs.minor, iy * gs.minor, fw * gs.minor, fh * gs.minor);
-            // optional stroke for clarity around footprint
-            g.lineStyle(2, 0xffffff, 0.12);
-            g.strokeRect(ix * gs.minor + 1, iy * gs.minor + 1, fw * gs.minor - 2, fh * gs.minor - 2);
-            // When placement mode, hovered building name handling is not needed
-            // ensure any previous hover label is cleared
-            if (this._hoveredRecord) {
-                this._hoveredRecord = null;
-                this._updateLabelsVisibility();
-            }
+        // If placement controller active, delegate hover preview drawing to it
+        if (this._placementController && this._placementController.isPlacing()) {
+            try { this._placementController.handlePointerMove(pointer); } catch (e) {}
             return;
         }
 
