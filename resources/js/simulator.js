@@ -3,6 +3,7 @@ import { EventBus } from './simulator/core/EventBus.js';
 import { GridSystem } from './simulator/core/GridSystem.js';
 import { CameraController } from './simulator/core/CameraController.js';
 import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
+import BuildingManager from './simulator/managers/BuildingManager.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -75,16 +76,15 @@ class PrototypeScene extends Phaser.Scene {
         this._hoverCell = null; // { ix, iy }
         this._selectedCell = null; // { ix, iy }
         // Building state managed by BuildingManager
-        // Keep compatibility placeholders used by older code paths
-        this._buildings = null; // replaced by BuildingManager
-        this._nextBuildingId = null;
+        // BuildingManager owns building state; do not expose its internals here.
         // Building definitions handled by BuildingDefinitions (keeps defaults and loads API machines)
         this._buildingDefinitions = new BuildingDefinitions();
         // Expose a compatibility object used by the rest of the scene
         this._buildingDefs = this._buildingDefinitions.getAll();
 
-        // BuildingManager will be created after definitions are initialized
-        this._buildingManager = null;
+        // BuildingManager instantiated now to centralize building lifecycle
+        this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
+        // BuildingManager instantiated; do not mirror its private fields here.
 
         const fetchScene = this;
         // Fire-and-forget: load remote machines and augment definitions; toolbar DOM rendering remains in simulator.js
@@ -168,18 +168,7 @@ class PrototypeScene extends Phaser.Scene {
                         toolbarEl.appendChild(btn);
                     }
                 });
-                // Instantiate BuildingManager now that definitions are available
-                try {
-                    // Lazy import to avoid circular ordering issues in some bundlers
-                    // eslint-disable-next-line import/no-unresolved
-                    const { default: BuildingManager } = await import('./simulator/managers/BuildingManager.js');
-                    fetchScene._buildingManager = new BuildingManager(fetchScene, fetchScene._gridSystem, fetchScene._buildingDefinitions, fetchScene._eventBus);
-                    // maintain compatibility pointers used throughout the scene
-                    fetchScene._buildings = fetchScene._buildingManager._occupancy;
-                    fetchScene._nextBuildingId = fetchScene._buildingManager._nextId;
-                } catch (e) {
-                    console.warn('Failed to initialize BuildingManager:', e);
-                }
+                // BuildingManager was instantiated eagerly during scene create(); definitions have populated.
             } catch (err) {
                 console.error('Failed to load machines from API:', err);
                 let msgEl = document.getElementById('simulator-api-error');
@@ -275,28 +264,10 @@ class PrototypeScene extends Phaser.Scene {
                     const defKey = this._placementDefKey || 'processUnit';
                     const def = this._buildingDefs[defKey];
                     const [fw, fh] = def.footprint;
-                    // Check all cells in footprint for occupancy
-                    let anyOccupied = false;
-                    for (let dx = 0; dx < fw; dx++) {
-                        for (let dy = 0; dy < fh; dy++) {
-                            const k = `${ix + dx},${iy + dy}`;
-                            if (this._buildings.has(k)) {
-                                anyOccupied = true;
-                                break;
-                            }
-                        }
-                        if (anyOccupied) break;
-                    }
-                        if (!anyOccupied) {
-                            // delegate to BuildingManager if available
-                            if (this._buildingManager) {
-                                this._buildingManager.placeMachine(ix, iy, defKey);
-                                // keep scene-level selection compatibility
-                                this._buildings = this._buildingManager._occupancy;
-                                this._nextBuildingId = this._buildingManager._nextId;
-                            } else {
-                                this._placeBuilding(ix, iy, defKey);
-                            }
+                    // Delegate footprint validation to BuildingManager
+                    const canPlace = this._buildingManager.canPlace(ix, iy, defKey);
+                    if (canPlace) {
+                        this._buildingManager.placeMachine(ix, iy, defKey);
                         // After placing exactly one building, exit placement mode and clear preview
                         this._placementMode = false;
                         this._placementDefKey = null;
@@ -312,8 +283,8 @@ class PrototypeScene extends Phaser.Scene {
 
                 // Not in placement mode: check if clicked on a building to start a possible drag
                 const key = `${ix},${iy}`;
-                if (this._buildings.has(key)) {
-                    const record = this._buildings.get(key);
+                const record = this._buildingManager.getMachineAt(ix, iy);
+                if (record) {
                     // If record is not movable, treat as selection only
                     if (!record.movable) {
                         this._selectedCell = { ix: record.gridX, iy: record.gridY };
@@ -363,52 +334,13 @@ class PrototypeScene extends Phaser.Scene {
                         const destIx = Math.floor(record.container.x / gs.minor);
                         const destIy = Math.floor(record.container.y / gs.minor);
 
-                        // validate destination ignoring this record's current occupancy
-                        let occupied = false;
-                        for (let dx = 0; dx < fw; dx++) {
-                            for (let dy = 0; dy < fh; dy++) {
-                                const k = `${destIx + dx},${destIy + dy}`;
-                                if (this._buildings.has(k)) {
-                                    const r = this._buildings.get(k);
-                                    if (r !== record) {
-                                        occupied = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (occupied) break;
-                        }
-
-                        if (!occupied) {
-                            // commit: remove old keys and set new ones
-                            const origX = this._dragState.origGrid.x;
-                            const origY = this._dragState.origGrid.y;
-                            for (let dx = 0; dx < fw; dx++) {
-                                for (let dy = 0; dy < fh; dy++) {
-                                    const k = `${origX + dx},${origY + dy}`;
-                                    const existing = this._buildings.get(k);
-                                    if (existing === record) {
-                                        this._buildings.delete(k);
-                                    }
-                                }
-                            }
-
-                            for (let dx = 0; dx < fw; dx++) {
-                                for (let dy = 0; dy < fh; dy++) {
-                                    const k = `${destIx + dx},${destIy + dy}`;
-                                    this._buildings.set(k, record);
-                                }
-                            }
-
-                            // update record coords
-                            record.gridX = destIx;
-                            record.gridY = destIy;
-
+                        // validate and commit move via BuildingManager (ignoring this record)
+                        const canMove = this._buildingManager.canPlace(destIx, destIy, record.defKey, record);
+                        if (canMove) {
+                            this._buildingManager.moveMachine(record, destIx, destIy);
                             // keep selection on new origin
                             this._selectedCell = { ix: destIx, iy: destIy };
                             this._drawSelection();
-                            // Notify cable system that this building moved so cables redraw
-                            if (typeof this._updateCablesForRecord === 'function') this._updateCablesForRecord(record);
                         } else {
                             // invalid move: return to original position
                             record.container.x = this._dragState.origGrid.x * gs.minor;
@@ -423,7 +355,7 @@ class PrototypeScene extends Phaser.Scene {
                         this._selectedCell = { ix: orig.x, iy: orig.y };
                         this._drawSelection();
                         // show machine info for this building if available
-                        try { const rec = this._buildings.get(`${orig.x},${orig.y}`); if (rec) showMachineInfoFor(rec); } catch (e) {}
+                        try { const rec = this._buildingManager.getMachineAt(orig.x, orig.y); if (rec) showMachineInfoFor(rec); } catch (e) {}
                     }
 
                     // Clear drag preview graphics and reset state
@@ -472,20 +404,7 @@ class PrototypeScene extends Phaser.Scene {
                     // Validate footprint occupancy while ignoring the dragged record's current cells
                     const def = this._buildingDefs[record.defKey] || this._buildingDefs.processUnit;
                     const [fw, fh] = def.footprint;
-                    let occupied = false;
-                    for (let dx = 0; dx < fw; dx++) {
-                        for (let dy = 0; dy < fh; dy++) {
-                            const k = `${destIx + dx},${destIy + dy}`;
-                            if (this._buildings.has(k)) {
-                                const r = this._buildings.get(k);
-                                if (r !== record) {
-                                    occupied = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (occupied) break;
-                    }
+                    const occupied = !this._buildingManager.canPlace(destIx, destIy, record.defKey, record);
 
                     // Draw preview footprint using drag graphics
                     const g = this._dragGraphics;
@@ -747,9 +666,8 @@ class PrototypeScene extends Phaser.Scene {
                 const gs = this._gridConfig;
                 const ix = Math.floor(world.x / gs.minor);
                 const iy = Math.floor(world.y / gs.minor);
-                const key = `${ix},${iy}`;
-                if (this._buildings.has(key)) {
-                    const rec = this._buildings.get(key);
+                const rec = this._buildingManager.getMachineAt(ix, iy);
+                if (rec) {
                     showContextMenuFor('building', rec, x, y);
                     return;
                 }
@@ -760,23 +678,13 @@ class PrototypeScene extends Phaser.Scene {
         // Shared delete function
         function deleteBuilding(record) {
             if (!record || !record.deletable) return;
-            // Remove any attached power cables before destroying
-            if (typeof scene._removeCablesForRecord === 'function') scene._removeCablesForRecord(record);
-            const def = scene._buildingDefs[record.defKey] || scene._buildingDefs.processUnit;
-            const fw = def.footprint[0];
-            const fh = def.footprint[1];
-            // remove occupancy keys that point to this record
-            for (let dx = 0; dx < fw; dx++) {
-                for (let dy = 0; dy < fh; dy++) {
-                    const k = `${record.gridX + dx},${record.gridY + dy}`;
-                    const existing = scene._buildings.get(k);
-                    if (existing === record) {
-                        scene._buildings.delete(k);
-                    }
-                }
+            // Delegate removal to BuildingManager which handles cables, occupancy and container destruction
+            if (scene._buildingManager) {
+                scene._buildingManager.removeMachine(record);
+            } else {
+                if (typeof scene._removeCablesForRecord === 'function') scene._removeCablesForRecord(record);
+                if (record.container && record.container.destroy) record.container.destroy();
             }
-            // destroy container (label is child)
-            if (record.container && record.container.destroy) record.container.destroy();
             // clear selection and visuals
             scene._selectedCell = null;
             scene._hoveredRecord = null;
@@ -807,9 +715,8 @@ class PrototypeScene extends Phaser.Scene {
             const active = document.activeElement;
             if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
 
-            if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._selectedCell) {
-                const key = `${this._selectedCell.ix},${this._selectedCell.iy}`;
-                const rec = this._buildings.get(key);
+                if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._selectedCell) {
+                const rec = this._buildingManager.getMachineAt(this._selectedCell.ix, this._selectedCell.iy);
                 if (rec && rec.deletable) {
                     ev.preventDefault();
                     deleteBuilding(rec);
@@ -871,14 +778,14 @@ class PrototypeScene extends Phaser.Scene {
                 for (const p of placements) {
                     // skip if a building of this defKey already exists
                     let exists = false;
-                    for (const rec of (this._buildingManager ? this._buildingManager.getPlacedMachines() : this._buildings.values())) {
+                    for (const rec of this._buildingManager.getPlacedMachines()) {
                         if (rec && rec.defKey === p.key) { exists = true; break; }
                     }
                     if (exists) continue;
 
                     const def = this._buildingDefs[p.key];
                     if (!def) continue;
-                    const rec = (this._buildingManager ? this._buildingManager.placeMachine(p.ix, p.iy, p.key) : this._placeBuilding(p.ix, p.iy, p.key));
+                    const rec = this._buildingManager.placeMachine(p.ix, p.iy, p.key);
                     if (rec) {
                         rec.permanent = def.permanent === true;
                         rec.deletable = def.deletable !== false;
@@ -889,7 +796,7 @@ class PrototypeScene extends Phaser.Scene {
                 this._initialSourcesPlaced = true;
                 // Place External Grid and a demo Process Unit and connect them with a power cable for the initial demo
                 try {
-                    const gridRec = (this._buildingManager ? this._buildingManager.placeMachine(startIx + 22, startIy + 0, 'externalGrid') : this._placeBuilding(startIx + 22, startIy + 0, 'externalGrid'));
+                    const gridRec = this._buildingManager.placeMachine(startIx + 22, startIy + 0, 'externalGrid');
                     if (gridRec) { gridRec.permanent = true; gridRec.deletable = false; gridRec.movable = true; }
                     // Do not place demo process unit on load — only show external substation
                     if (typeof this._recomputeMachineStatuses === 'function') this._recomputeMachineStatuses();
@@ -930,19 +837,9 @@ PrototypeScene.prototype._drawGrid = function (force) {
         if (this._placementMode) {
             const def = this._buildingDefs[this._placementDefKey || 'processUnit'];
             const [fw, fh] = def.footprint;
-            // Check if any of the footprint cells are occupied
-            let occupied = false;
-            for (let dx = 0; dx < fw; dx++) {
-                for (let dy = 0; dy < fh; dy++) {
-                    const k = `${ix + dx},${iy + dy}`;
-                    if (this._buildings.has(k)) {
-                        occupied = true;
-                        break;
-                        return;
-                    }
-                }
-                if (occupied) break;
-            }
+            // Use BuildingManager to validate placement preview
+            const canPlacePreview = this._buildingManager.canPlace(ix, iy, this._placementDefKey || 'processUnit');
+            const occupied = !canPlacePreview;
 
             // Machine info panel: create or reuse
             function getOrCreateMachineInfoPanel() {
@@ -1176,11 +1073,10 @@ PrototypeScene.prototype._drawGrid = function (force) {
         g.fillRect(ix * gs.minor, iy * gs.minor, gs.minor, gs.minor);
 
         // If hovering a building, temporarily show its label when global names hidden
-        const key = `${ix},${iy}`;
-        if (this._buildings.has(key)) {
-            const record = this._buildings.get(key);
-            if (this._hoveredRecord !== record) {
-                this._hoveredRecord = record;
+        const hovered = this._buildingManager.getMachineAt(ix, iy);
+        if (hovered) {
+            if (this._hoveredRecord !== hovered) {
+                this._hoveredRecord = hovered;
                 this._updateLabelsVisibility();
             }
             return;
@@ -1200,7 +1096,7 @@ PrototypeScene.prototype._drawGrid = function (force) {
 
         // Build set of unique records (map has multiple keys per record)
         const seen = new Set();
-        for (const rec of this._buildings.values()) {
+        for (const rec of this._buildingManager.getPlacedMachines()) {
             if (!rec || seen.has(rec)) continue;
             seen.add(rec);
             const label = rec.label;
@@ -1247,61 +1143,7 @@ PrototypeScene.prototype._drawGrid = function (force) {
         this._updateLabelsVisibility();
     };
 
-// Place a building at grid coordinates ix,iy if unoccupied
-PrototypeScene.prototype._placeBuilding = function (ix, iy, defKey) {
-    const key = `${ix},${iy}`;
-    if (this._buildings.has(key)) {
-        return null;
-    }
-
-    const def = this._buildingDefs[defKey] || this._buildingDefs.processUnit;
-    const gs = this._gridConfig;
-    const id = this._nextBuildingId++;
-
-    // Create a container anchored at the top-left corner of the origin cell
-    const x = ix * gs.minor;
-    const y = iy * gs.minor;
-    const container = this.add.container(x, y);
-
-    const [fw, fh] = def.footprint;
-
-    // Add sprite centered across the full footprint and scaled to ~85% of footprint
-    const textureKey = def.image;
-    const centerX = (fw * gs.minor) / 2;
-    const centerY = (fh * gs.minor) / 2 - 6;
-    const img = this.add.image(centerX, centerY, textureKey);
-
-    // Force building sprites to display at a consistent footprint-relative size.
-    // If a building uses a smaller footprint than the municipal waste source,
-    // upscale it so resource images appear the same size as the trash squares.
-    const refFootprint = (this._buildingDefs && this._buildingDefs.municipalWaste && this._buildingDefs.municipalWaste.footprint) ? this._buildingDefs.municipalWaste.footprint : [4, 4];
-    const refW = refFootprint[0];
-    const refH = refFootprint[1];
-    let displayW = fw * gs.minor * 0.85;
-    let displayH = fh * gs.minor * 0.85;
-    if (fw < refW || fh < refH) {
-        displayW = refW * gs.minor * 0.85;
-        displayH = refH * gs.minor * 0.85;
-    }
-    img.setDisplaySize(displayW, displayH);
-    img.setOrigin(0.5, 0.5);
-
-    // Add sprite only (no persistent name label or shortCode)
-    container.add(img);
-
-    const record = {
-        id,
-        type: def.name,
-        defKey,
-        gridX: ix,
-        gridY: iy,
-        container,
-        label: null,
-        permanent: def.permanent === true,
-        deletable: def.deletable !== false,
-        movable: def.movable !== false,
-        suggestedNext: def.suggestedNext || []
-    };
+// Legacy _placeBuilding removed — BuildingManager manages placement lifecycle and record creation
 
 // ---------------------------
 // Machine status visuals and power cable system
@@ -1359,7 +1201,7 @@ PrototypeScene.prototype._updateMachineStatusVisual = function (record) {
 PrototypeScene.prototype._updateAllStatusVisibility = function () {
     // Toggle visibility of all status backgrounds according to scene setting
     const seen = new Set();
-    for (const rec of this._buildings.values()) {
+    for (const rec of this._buildingManager.getPlacedMachines()) {
         if (!rec || !rec.id) continue;
         if (seen.has(rec.id)) continue;
         seen.add(rec.id);
@@ -1372,7 +1214,7 @@ PrototypeScene.prototype._updateAllStatusVisibility = function () {
 // Power connections removed — machine statuses default to working (non-permanent) or neutral (permanent)
 PrototypeScene.prototype._recomputeMachineStatuses = function () {
     const seen = new Set();
-    for (const rec of this._buildings.values()) {
+    for (const rec of this._buildingManager.getPlacedMachines()) {
         if (!rec || !rec.id) continue;
         if (seen.has(rec.id)) continue;
         seen.add(rec.id);
@@ -1416,23 +1258,7 @@ PrototypeScene.prototype.setDebugHubPowerMode = function (mode) {
 // Power indicator removed — no-op
 PrototypeScene.prototype._renderPowerIndicator = function () { return; };
 
-    // Reserve all footprint cells in the occupancy map pointing to the same record
-    for (let dx = 0; dx < fw; dx++) {
-        for (let dy = 0; dy < fh; dy++) {
-            const k = `${ix + dx},${iy + dy}`;
-            this._buildings.set(k, record);
-        }
-    }
-
-    // Ensure new building's label visibility follows the global setting
-    this._updateLabelsVisibility();
-
-    // Initialize status and visuals
-    record.status = 'neutral';
-    if (typeof this._updateMachineStatusVisual === 'function') this._updateMachineStatusVisual(record);
-
-    return record;
-};
+// Legacy occupancy tail removed; BuildingManager manages occupancy and record initialization.
 
 
 const config = {
