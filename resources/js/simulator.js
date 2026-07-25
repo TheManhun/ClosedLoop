@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { EventBus } from './simulator/core/EventBus.js';
 import { GridSystem } from './simulator/core/GridSystem.js';
+import { CameraController } from './simulator/core/CameraController.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -45,14 +46,10 @@ class PrototypeScene extends Phaser.Scene {
         // Do NOT reposition world objects on resize — camera will resize the viewport only.
         // Leave titleText at its initial world position.
 
-        // Camera controls
-        this._cameraControls = {
-            dragging: false,
-            dragStart: { x: 0, y: 0, scrollX: 0, scrollY: 0 },
-            minZoom: 0.5,
-            maxZoom: 2.0,
-            zoomSensitivity: 0.0015,
-        };
+        // CameraController encapsulates camera pan/zoom/reset behavior
+        this._cameraController = new CameraController(this, { minZoom: 0.5, maxZoom: 2.0, zoomSensitivity: 0.0015 });
+        // Keep compatibility reference used throughout the scene
+        this._cameraControls = this._cameraController.controls;
 
         // Grid responsibilities moved to GridSystem (incremental refactor)
         this._eventBus = new EventBus();
@@ -354,41 +351,12 @@ class PrototypeScene extends Phaser.Scene {
         // Track whether we've successfully rendered at least one visible grid.
         this._gridHasRendered = false;
 
-        // Wheel to zoom (cursor-centred using world coordinates)
-        this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
-            const controls = this._cameraControls;
-            const prevZoom = cam.zoom;
-            const newZoom = Phaser.Math.Clamp(prevZoom - deltaY * controls.zoomSensitivity * prevZoom, controls.minZoom, controls.maxZoom);
+        // Camera wheel/pan/reset handled by CameraController (see resources/js/simulator/core/CameraController.js)
 
-            if (newZoom === prevZoom) {
-                return;
-            }
-
-            // World point under the pointer before zoom
-            const before = cam.getWorldPoint(pointer.x, pointer.y);
-
-            // Apply zoom
-            cam.setZoom(newZoom);
-
-            // World point under the pointer after zoom
-            const after = cam.getWorldPoint(pointer.x, pointer.y);
-
-            // Adjust camera scroll by the difference so the world point under the cursor remains stationary
-            cam.scrollX += before.x - after.x;
-            cam.scrollY += before.y - after.y;
-
-            // Update hover after zoom so highlight stays under pointer
-            this._updateHover(pointer);
-        });
-
-        // Pointer down: middle-button drag to pan, left-click may start a drag or select
+        // Pointer down: camera controller handles middle-button drag; scene should ignore middle-button events
         this.input.on('pointerdown', (pointer) => {
-                // Middle-button starts camera drag
                 if (pointer.middleButtonDown()) {
-                    this._cameraControls.dragging = true;
-                    this._cameraControls.dragStart = { x: pointer.x, y: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
-                    // hide context menu if visible when camera drag starts
-                    hideContextMenu();
+                    // CameraController will handle drag start and context menu hiding.
                     return;
                 }
 
@@ -468,10 +436,6 @@ class PrototypeScene extends Phaser.Scene {
         });
 
         this.input.on('pointerup', (pointer) => {
-            // Stop dragging on pointer up (for middle button release)
-            if (!pointer.middleButtonDown()) {
-                this._cameraControls.dragging = false;
-            }
 
             // Handle left-button release for drag-to-move finalization/click
             if (pointer.leftButtonReleased()) {
@@ -560,16 +524,7 @@ class PrototypeScene extends Phaser.Scene {
         });
 
         this.input.on('pointermove', (pointer) => {
-            // Camera panning with middle-button takes priority
-            if (this._cameraControls.dragging) {
-                const start = this._cameraControls.dragStart;
-                // Move scroll in inverse of pointer movement, adjusted for zoom
-                cam.scrollX = start.scrollX - (pointer.x - start.x) / cam.zoom;
-                cam.scrollY = start.scrollY - (pointer.y - start.y) / cam.zoom;
-                // update hover while panning
-                this._updateHover(pointer);
-                return;
-            }
+            // Camera panning handled by CameraController; continue with building drag/hover logic
 
             // Handle possible building drag
             if (this._dragState.active && this._dragState.record) {
@@ -641,11 +596,7 @@ class PrototypeScene extends Phaser.Scene {
             this._updateHover(pointer);
         });
 
-        // Reset camera with R key: zoom 1 and center on the prototype text
-        this.input.keyboard.on('keydown-R', () => {
-            cam.setZoom(1);
-            cam.centerOn(this.titleText.x, this.titleText.y);
-        });
+        // Camera reset handled by CameraController
         // Toolbar show/hide helpers
         const toolbarEl = document.getElementById('simulator-toolbar');
         function showToolbar() {
@@ -746,6 +697,9 @@ class PrototypeScene extends Phaser.Scene {
         function hideContextMenu() {
             if (scene._contextMenuEl) scene._contextMenuEl.style.display = 'none';
         }
+
+        // Expose for CameraController to call when a camera drag starts
+        scene.hideContextMenu = hideContextMenu;
 
         function clampMenuPosition(x, y, menuEl) {
             const root = document.getElementById('simulator-root');
