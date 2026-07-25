@@ -75,6 +75,13 @@ html,body{height:100%;}
 /* Category header label styling */
 .toolbox-category-label{color:var(--muted);font-size:12px;padding:6px 4px}
 
+/* Ensure category headers are readable */
+.toolbox-category-header .toolbox-category-title { color: #ffffff; }
+.toolbox-category-header .toolbox-category-count { color: #b8bcc2; margin-left:6px; }
+.toolbox-category-header .toolbox-collapse-btn { color: #9ca3af; background: transparent; border: 0; font-size:14px }
+.toolbox-category-header .toolbox-collapse-btn:hover { color: #39ff88; }
+.toolbox-category-header:hover { background: rgba(255,255,255,0.01); }
+
 /* Responsive tweaks */
 @media (max-width:800px){.factory-editor-root{flex-direction:column;height:60vh}.toolbox{width:100%;height:104px;display:flex;flex-direction:row}.toolbox.closed{height:44px;width:100%}.viewport{height:calc(100% - 104px)}}
 

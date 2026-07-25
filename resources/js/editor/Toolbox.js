@@ -24,15 +24,15 @@ export default class Toolbox{
     this.root = root;
     // instance created
     this.onStartPlace = (payload) => {
+      // Prefer provided callback (e.g., factory-editor integration). Fall back to global scene only if no callback provided.
+      if (onStartPlace) {
+        try { onStartPlace(payload); return; } catch (e) { /* fall through to fallback */ }
+      }
       const scene = window.__simulatorScene;
       if (scene && payload && payload.defKey) {
         if (scene._placementController && typeof scene._placementController.beginPlacement === 'function') {
           try { scene._placementController.beginPlacement(payload.defKey); } catch (e) { /* ignore */ }
-        } else if (onStartPlace) {
-          onStartPlace(payload);
         }
-      } else if (onStartPlace) {
-        onStartPlace(payload);
       }
     };
     this.items = cityTechnologies;

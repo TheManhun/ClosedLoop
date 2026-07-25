@@ -64,4 +64,64 @@ export default class ConnectionManager {
 
     getConnection(id) { return this._connections.get(id); }
     getAll() { return Array.from(this._connections.values()); }
+
+    // Update renderer endpoints for any connections that reference the given record
+    updateConnectionsForRecord(record) {
+        if (!record) return;
+        for (const rec of this._connections.values()) {
+            let changed = false;
+            if (rec.fromMachineId === record.id || rec.toMachineId === record.id) {
+                try {
+                    const from = this.buildingManager.getMachine(rec.fromMachineId);
+                    const to = this.buildingManager.getMachine(rec.toMachineId);
+                    if (!from || !to) continue;
+                    const start = this.scene._getRecordCenter(from);
+                    const end = this.scene._getRecordCenter(to);
+                    // Update renderer depending on type
+                    if (rec._renderer) {
+                        if (rec.type === 'power' && rec._renderer.graphics && rec._renderer.symbols) {
+                            // replace graphics line by redrawing
+                            try {
+                                rec._renderer.graphics.clear();
+                                rec._renderer.graphics.lineStyle(6, 0x0b0b0b, 1);
+                                rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
+                                rec._renderer.graphics.lineStyle(2, 0x2b2b2b, 0.6);
+                                rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
+                                rec._renderer.start = start; rec._renderer.end = end;
+                                // reposition symbols
+                                const dx = end.x - start.x, dy = end.y - start.y;
+                                const len = Math.sqrt(dx*dx + dy*dy);
+                                for (let i=0;i<rec._renderer.symbols.length;i++) {
+                                    const img = rec._renderer.symbols[i];
+                                    img.x = start.x; img.y = start.y; img.rotation = Math.atan2(dy, dx);
+                                }
+                                changed = true;
+                            } catch (e) { /* ignore */ }
+                        } else if (rec._renderer.graphics) {
+                            try {
+                                rec._renderer.graphics.clear();
+                                rec._renderer.graphics.lineStyle(4, 0x111111, 1);
+                                rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
+                                rec._renderer.start = start; rec._renderer.end = end;
+                                changed = true;
+                            } catch (e) {}
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (changed) {
+                // future: emit event
+            }
+        }
+    }
+
+    // Remove any connections referencing the given record
+    removeConnectionsForRecord(record) {
+        if (!record) return;
+        const toRemove = [];
+        for (const [id, rec] of this._connections.entries()) {
+            if (rec.fromMachineId === record.id || rec.toMachineId === record.id) toRemove.push(id);
+        }
+        for (const id of toRemove) this.removeConnection(id);
+    }
 }
