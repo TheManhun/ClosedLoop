@@ -1,4 +1,6 @@
 // Plain JS class to manage building definitions and API loading
+import MachineRepository from './MachineRepository.js';
+
 export default class BuildingDefinitions {
     constructor() {
         // Default hardcoded definitions (kept small so Laravel can inject JSON later)
@@ -125,14 +127,12 @@ export default class BuildingDefinitions {
 
         this._loaded = false;
         this._machines = [];
+        this._repo = new MachineRepository();
     }
 
     async init() {
-        const url = '/api/machines';
         try {
-            const res = await fetch(url, { credentials: 'same-origin' });
-            if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
-            const machines = await res.json();
+            const machines = await this._repo.getAll();
             if (!Array.isArray(machines) || machines.length === 0) {
                 this._loaded = true;
                 return machines;
@@ -141,7 +141,7 @@ export default class BuildingDefinitions {
             // Normalize and merge machine records into definitions (but do not perform any DOM or Phaser operations)
             for (const m of machines) {
                 const id = String(m.id);
-                this._defs[id] = Object.assign({
+                const defObj = Object.assign({
                     name: m.name || ('Machine ' + id),
                     image: m.image || null,
                     category: 'process',
@@ -152,6 +152,11 @@ export default class BuildingDefinitions {
                     placeable: m.placeable !== false,
                     suggestedNext: []
                 }, this._defs[id] || {});
+                // Store under numeric id and also under defKey if provided, to keep compatibility
+                this._defs[id] = defObj;
+                if (m.defKey) {
+                    this._defs[m.defKey] = Object.assign({}, defObj);
+                }
             }
 
             this._machines = machines;

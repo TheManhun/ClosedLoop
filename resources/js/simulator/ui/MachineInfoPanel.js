@@ -38,6 +38,37 @@ export default class MachineInfoPanel {
 
     show(machine, record) {
         if (!machine) return;
+        // Normalize newer machine schema into the shapes this panel expects
+        const normalized = Object.assign({}, machine);
+        // map camelCase power/water fields to legacy underscored names used elsewhere
+        if (normalized.powerRequired !== undefined) normalized.power_required = normalized.powerRequired;
+        if (normalized.waterRequired !== undefined) normalized.water_required = normalized.waterRequired;
+        if (normalized.powerProduced !== undefined) normalized.power_produced = normalized.powerProduced;
+        if (normalized.waterProduced !== undefined) normalized.water_produced = normalized.waterProduced;
+        if (normalized.heatProduced !== undefined) normalized.heat_produced = normalized.heatProduced;
+        if (normalized.co2Produced !== undefined) normalized.co2_produced = normalized.co2Produced;
+
+        // Map inputs/outputs arrays into the legacy `resources` array with direction
+        if ((Array.isArray(normalized.inputs) && normalized.inputs.length) || (Array.isArray(normalized.outputs) && normalized.outputs.length)) {
+            const resources = [];
+            if (Array.isArray(normalized.inputs)) {
+                for (const it of normalized.inputs) {
+                    resources.push({ direction: 'input', name: it.resourceId || it.name || '', amount: it.quantity ?? it.amount, unit: it.units ?? it.unit, resourceId: it.resourceId });
+                }
+            }
+            if (Array.isArray(normalized.outputs)) {
+                for (const it of normalized.outputs) {
+                    resources.push({ direction: 'output', name: it.resourceId || it.name || '', amount: it.quantity ?? it.amount, unit: it.units ?? it.unit, resourceId: it.resourceId });
+                }
+            }
+            normalized.resources = resources;
+        }
+
+        // Map references into basic links expected by older UI
+        if (Array.isArray(normalized.references) && normalized.references.length) {
+            normalized.links = normalized.references.map(r => ({ title: r, url: null }));
+        }
+
         const panel = this._create();
         panel.innerHTML = '';
         // Title
@@ -48,24 +79,24 @@ export default class MachineInfoPanel {
         title.textContent = machine.name || 'Machine';
         panel.appendChild(title);
 
-        if (machine.description) {
+        if (normalized.description) {
             const desc = document.createElement('div');
             desc.style.marginBottom = '8px';
-            desc.textContent = machine.description;
+            desc.textContent = normalized.description;
             panel.appendChild(desc);
         }
 
         const meta = document.createElement('div');
         meta.style.marginBottom = '8px';
-        meta.innerHTML = '<strong>Category:</strong> ' + (machine.category || '—');
+        meta.innerHTML = '<strong>Category:</strong> ' + (normalized.category || '—');
         panel.appendChild(meta);
 
         const pw = document.createElement('div');
         pw.style.marginBottom = '8px';
-        pw.innerHTML = '<strong>Power required:</strong> ' + (machine.power_required ?? '—') + '<br/><strong>Water required:</strong> ' + (machine.water_required ?? '—');
+        pw.innerHTML = '<strong>Power required:</strong> ' + (normalized.power_required ?? '—') + '<br/><strong>Water required:</strong> ' + (normalized.water_required ?? '—');
         panel.appendChild(pw);
 
-        const resources = Array.isArray(machine.resources) ? machine.resources : [];
+        const resources = Array.isArray(normalized.resources) ? normalized.resources : [];
         const inputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'input');
         const outputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'output');
 
