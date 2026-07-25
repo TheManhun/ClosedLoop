@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { EventBus } from './simulator/core/EventBus.js';
+import { GridSystem } from './simulator/core/GridSystem.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -52,20 +54,11 @@ class PrototypeScene extends Phaser.Scene {
             zoomSensitivity: 0.0015,
         };
 
-        // Grid configuration (easy to tune later)
-        this._gridConfig = {
-            minor: 32, // world units between minor grid lines
-            majorEvery: 5, // major line every N minor lines
-            minorColor: '#ffffff',
-            minorAlpha: 0.06,
-            majorColor: '#ffffff',
-            majorAlpha: 0.14,
-            minorThickness: 1,
-            majorThickness: 1.5,
-        };
-
-        // Graphics object used to draw the grid. We clear and redraw it when camera moves/zooms.
-        this._gridGraphics = this.add.graphics({ x: 0, y: 0 });
+        // Grid responsibilities moved to GridSystem (incremental refactor)
+        this._eventBus = new EventBus();
+        this._gridSystem = new GridSystem(this, this._eventBus);
+        // Keep compatibility reference used throughout the scene
+        this._gridConfig = this._gridSystem.config;
         // Graphics for hover and selection (reused objects)
         this._hoverGraphics = this.add.graphics({ x: 0, y: 0 });
         this._selectionGraphics = this.add.graphics({ x: 0, y: 0 });
@@ -1044,73 +1037,8 @@ class PrototypeScene extends Phaser.Scene {
 // Draw grid function added to PrototypeScene prototype
 // Returns true when a visible grid was drawn, false otherwise.
 PrototypeScene.prototype._drawGrid = function (force) {
-    const cam = this.cameras.main;
-    const gs = this._gridConfig;
-
-    const view = cam.worldView;
-    // If worldView not ready, do not mark as rendered.
-    if (!view || view.width === 0 || view.height === 0) {
-        return false;
-    }
-
-    // Only redraw when camera scroll or zoom changed, unless forced.
-    if (!force && this._lastCamState.x === cam.scrollX && this._lastCamState.y === cam.scrollY && this._lastCamState.zoom === cam.zoom) {
-        return false;
-    }
-
-    this._lastCamState.x = cam.scrollX;
-    this._lastCamState.y = cam.scrollY;
-    this._lastCamState.zoom = cam.zoom;
-
-    const g = this._gridGraphics;
-    g.clear();
-
-    const left = Math.floor(view.x / gs.minor) * gs.minor;
-    const right = Math.ceil((view.x + view.width) / gs.minor) * gs.minor;
-    const top = Math.floor(view.y / gs.minor) * gs.minor;
-    const bottom = Math.ceil((view.y + view.height) / gs.minor) * gs.minor;
-
-    const minorColor = parseInt(gs.minorColor.replace('#', ''), 16);
-    const majorColor = parseInt(gs.majorColor.replace('#', ''), 16);
-
-    // Draw minor lines in one pass
-    g.lineStyle(gs.minorThickness, minorColor, gs.minorAlpha);
-    g.beginPath();
-    for (let x = left; x <= right; x += gs.minor) {
-        g.moveTo(x, top);
-        g.lineTo(x, bottom);
-    }
-    for (let y = top; y <= bottom; y += gs.minor) {
-        g.moveTo(left, y);
-        g.lineTo(right, y);
-    }
-    g.strokePath();
-
-    // Draw major lines on top
-    g.lineStyle(gs.majorThickness, majorColor, gs.majorAlpha);
-    g.beginPath();
-    // compute index offset for negative coordinates
-    const startXIndex = Math.floor(left / gs.minor);
-    const startYIndex = Math.floor(top / gs.minor);
-    for (let i = 0; i <= Math.ceil((right - left) / gs.minor); i++) {
-        const x = left + i * gs.minor;
-        const idx = startXIndex + i;
-        if (((idx % gs.majorEvery) + gs.majorEvery) % gs.majorEvery === 0) {
-            g.moveTo(x, top);
-            g.lineTo(x, bottom);
-        }
-    }
-    for (let j = 0; j <= Math.ceil((bottom - top) / gs.minor); j++) {
-        const y = top + j * gs.minor;
-        const idy = startYIndex + j;
-        if (((idy % gs.majorEvery) + gs.majorEvery) % gs.majorEvery === 0) {
-            g.moveTo(left, y);
-            g.lineTo(right, y);
-        }
-    }
-    g.strokePath();
-
-    return true;
+    if (!this._gridSystem) return false;
+    return this._gridSystem.drawGrid(Boolean(force));
 };
 
     // Update hover graphics for the cell under the given pointer
