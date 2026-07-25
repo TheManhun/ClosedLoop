@@ -3,6 +3,7 @@ import { EventBus } from './simulator/core/EventBus.js';
 import { GridSystem } from './simulator/core/GridSystem.js';
 import { CameraController } from './simulator/core/CameraController.js';
 import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
+import MachineRepository from './simulator/data/MachineRepository.js';
 import BuildingManager from './simulator/managers/BuildingManager.js';
 import InputHandler from './simulator/core/InputHandler.js';
 import MachineInfoPanel from './simulator/ui/MachineInfoPanel.js';
@@ -84,6 +85,50 @@ class PrototypeScene extends Phaser.Scene {
         this._buildingDefinitions = new BuildingDefinitions();
         // Expose a compatibility object used by the rest of the scene
         this._buildingDefs = this._buildingDefinitions.getAll();
+
+        // Also attempt to populate the Toolbox immediately from the local JSON repository
+        (async () => {
+            try {
+                // avoid double-population
+                if (document.getElementById('toolbox-categories')) return;
+            const repo = new MachineRepository();
+            const machines = await repo.getAll();
+            // expose simple icon helper used by UI code
+            try { fetchScene._machineRepoIconPath = (m) => repo.iconPath(m); } catch (e) {}
+                if (!Array.isArray(machines) || machines.length === 0) return;
+                const toolbox = document.getElementById('toolbox');
+                const toolboxBody = document.getElementById('toolbox-body');
+                if (!toolbox || !toolboxBody) return;
+                const search = document.createElement('input');
+                search.type = 'search'; search.placeholder = 'Search machines...'; search.id = 'toolbox-search'; search.style.width = '100%'; search.style.boxSizing = 'border-box'; search.style.padding = '8px'; search.style.marginBottom = '8px';
+                const container = document.createElement('div'); container.id = 'toolbox-categories';
+                toolboxBody.innerHTML = ''; toolboxBody.appendChild(search); toolboxBody.appendChild(container);
+                // group
+                const groups = {};
+                machines.forEach(m => { const cat = (m.category||'other').toString(); groups[cat]=groups[cat]||[]; groups[cat].push(m); });
+                const categoryDisplay = (c)=>{ const map={source:'Sources',process:'Processing',infrastructure:'Energy',manufacturing:'Manufacturing',recycling:'Recycling',agriculture:'Agriculture',storage:'Storage',transport:'Transport',research:'Research',other:'Other'}; return map[c]|| (c.charAt(0).toUpperCase()+c.slice(1)); };
+                Object.keys(groups).sort().forEach(cat=>{
+                    const section=document.createElement('div'); section.className='toolbox-category';
+                    const header=document.createElement('div'); header.className='toolbox-category-header'; header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.padding='6px 4px'; header.style.cursor='pointer';
+                    const title=document.createElement('div'); title.textContent = categoryDisplay(cat)+' ('+groups[cat].length+')'; title.style.fontWeight='700'; title.style.fontSize='13px';
+                    const collapseBtn=document.createElement('button'); collapseBtn.textContent='▾'; collapseBtn.setAttribute('aria-expanded','true'); collapseBtn.style.background='transparent'; collapseBtn.style.border='0'; collapseBtn.style.color='var(--muted)'; collapseBtn.style.cursor='pointer';
+                    header.appendChild(title); header.appendChild(collapseBtn);
+                    const list=document.createElement('div'); list.className='toolbox-category-list'; list.style.display='flex'; list.style.flexDirection='column'; list.style.gap='8px'; list.style.padding='6px 4px 12px 4px';
+                    groups[cat].forEach(m=>{
+                        const card=document.createElement('div'); card.className='toolbox-card'; card.style.display='flex'; card.style.alignItems='center'; card.style.gap='10px'; card.style.padding='8px'; card.style.borderRadius='8px'; card.style.background='rgba(255,255,255,0.02)'; card.style.cursor='pointer'; card.style.wordBreak='break-word'; card.setAttribute('data-defkey', m.defKey||String(m.id));
+                        const img=document.createElement('img'); img.src = m.icon ? ('/'+m.icon) : (m.image ? ('/'+m.image) : '/processingplant.png'); img.alt = m.name || ''; img.style.width='36px'; img.style.height='36px'; img.style.objectFit='contain'; img.style.flex='0 0 36px';
+                        const text=document.createElement('div'); text.style.flex='1'; const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight='600'; nm.style.fontSize='13px'; nm.style.lineHeight='1.2'; const catline=document.createElement('div'); catline.textContent = (m.category||''); catline.style.fontSize='12px'; catline.style.opacity='0.85'; text.appendChild(nm); text.appendChild(catline);
+                        card.appendChild(img); card.appendChild(text);
+                        card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = this._placementController; const key = m.defKey||String(m.id); if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} } });
+                        list.appendChild(card);
+                    });
+                    header.addEventListener('click', ()=>{ const expanded = list.style.display !== 'none'; list.style.display = expanded ? 'none' : 'flex'; collapseBtn.textContent = expanded ? '▸' : '▾'; collapseBtn.setAttribute('aria-expanded', String(!expanded)); });
+                    section.appendChild(header); section.appendChild(list); container.appendChild(section);
+                });
+                try { toolbox.classList.add('expanded'); document.body.classList.add('toolbox-is-expanded'); const tog = document.getElementById('toolbox-toggle'); if (tog) tog.setAttribute('aria-expanded','true'); toolbox.style.width='280px'; const simRoot=document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft='280px'; } catch(e){}
+                search.addEventListener('input', (e)=>{ const q=(e.target.value||'').toLowerCase().trim(); container.querySelectorAll('.toolbox-card').forEach(card=>{ const name = (card.querySelector('div') && card.querySelector('div').innerText) || ''; card.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none'; }); });
+            } catch (e) { /* ignore */ }
+        })();
 
         // BuildingManager instantiated now to centralize building lifecycle
         this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
@@ -170,56 +215,160 @@ class PrototypeScene extends Phaser.Scene {
                 // Start the loader for any queued assets
                 try { fetchScene.load.start(); } catch (e) { /* ignore */ }
 
-                // Build toolbar DOM (simple buttons) if not present
-                let toolbarEl = document.getElementById('simulator-toolbar');
-                if (!toolbarEl) {
-                    toolbarEl = document.createElement('div');
-                    toolbarEl.id = 'simulator-toolbar';
-                    toolbarEl.className = 'simulator-toolbar';
-                    const wrapper = document.querySelector('.simulator-root-wrapper') || document.body;
-                    wrapper.appendChild(toolbarEl);
-                }
+                // Populate left Toolbox (existing #toolbox) with machines from repository
+                try {
+                    const toolbox = document.getElementById('toolbox');
+                    const toolboxBody = document.getElementById('toolbox-body');
+                    if (toolbox && toolboxBody) {
+                        // Build search input and categories container
+                        const search = document.createElement('input');
+                        search.type = 'search';
+                        search.placeholder = 'Search machines...';
+                        search.id = 'toolbox-search';
+                        search.style.width = '100%';
+                        search.style.boxSizing = 'border-box';
+                        search.style.padding = '8px';
+                        search.style.marginBottom = '8px';
 
-                // Helper to create a button for a machine
-                function makeButton(defKey, def) {
-                    const btn = document.createElement('button');
-                    btn.className = 'toolbar-button';
-                    btn.id = 'place-' + defKey + '-btn';
-                    btn.textContent = def.name || defKey;
-                    btn.setAttribute('aria-pressed', 'false');
-                    btn.addEventListener('click', () => {
-                        const controller = fetchScene._placementController;
-                        if (!controller) return;
-                        const expanded = !(controller.isPlacing() && controller.getGhost && controller.getGhost().defKey === defKey);
-                        if (expanded) {
-                            try { controller.beginPlacement(defKey); } catch (e) { /* ignore */ }
-                        } else {
-                            try { controller.cancelPlacement(); } catch (e) { /* ignore */ }
-                        }
-                        // update active state on buttons
-                        document.querySelectorAll('.simulator-toolbar .toolbar-button').forEach(b => {
-                            b.classList.toggle('active', b === btn && expanded);
-                            b.setAttribute('aria-pressed', String(b === btn && expanded));
-                        });
+                        const container = document.createElement('div');
+                        container.id = 'toolbox-categories';
+
+                        toolboxBody.innerHTML = '';
+                        toolboxBody.appendChild(search);
+                        toolboxBody.appendChild(container);
+                        // Expand toolbox by default for new UI (force styles in case other scripts manage state)
                         try {
-                            if (controller.isPlacing()) controller.handlePointerMove(fetchScene.input.activePointer);
-                            else fetchScene._hoverGraphics.clear();
+                            toolbox.classList.add('expanded');
+                            document.body.classList.add('toolbox-is-expanded');
+                            const tog = document.getElementById('toolbox-toggle'); if (tog) tog.setAttribute('aria-expanded', 'true');
+                            toolbox.style.width = '280px';
+                            const simRoot = document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft = '280px';
                         } catch (e) {}
-                    });
-                    return btn;
-                }
 
-                // Populate toolbar buttons (only placeable machines)
-                toolbarEl.innerHTML = '';
-                machines.forEach((m) => {
-                    const id = String(m.id);
-                    const def = fetchScene._buildingDefs[id];
-                    if (!def) return;
-                    if (def.placeable) {
-                        const btn = makeButton(id, def);
-                        toolbarEl.appendChild(btn);
+                        // Group machines by category
+                        const groups = {};
+                        machines.forEach(m => {
+                            const cat = (m.category || 'other').toString();
+                            groups[cat] = groups[cat] || [];
+                            groups[cat].push(m);
+                        });
+
+                        // Category display name mapping
+                        const categoryDisplay = (c) => {
+                            const map = {
+                                source: 'Sources',
+                                process: 'Processing',
+                                infrastructure: 'Energy',
+                                manufacturing: 'Manufacturing',
+                                recycling: 'Recycling',
+                                agriculture: 'Agriculture',
+                                storage: 'Storage',
+                                transport: 'Transport',
+                                research: 'Research',
+                                other: 'Other'
+                            };
+                            return map[c] || (c.charAt(0).toUpperCase() + c.slice(1));
+                        };
+
+                        // Create category sections
+                        Object.keys(groups).sort().forEach(cat => {
+                            const section = document.createElement('div');
+                            section.className = 'toolbox-category';
+                            const header = document.createElement('div');
+                            header.className = 'toolbox-category-header';
+                            header.style.display = 'flex';
+                            header.style.justifyContent = 'space-between';
+                            header.style.alignItems = 'center';
+                            header.style.padding = '6px 4px';
+                            header.style.cursor = 'pointer';
+                            const title = document.createElement('div');
+                            title.textContent = categoryDisplay(cat) + ' (' + groups[cat].length + ')';
+                            title.style.fontWeight = '700';
+                            title.style.fontSize = '13px';
+                            const collapseBtn = document.createElement('button');
+                            collapseBtn.textContent = '▾';
+                            collapseBtn.setAttribute('aria-expanded', 'true');
+                            collapseBtn.style.background = 'transparent';
+                            collapseBtn.style.border = '0';
+                            collapseBtn.style.color = 'var(--muted)';
+                            collapseBtn.style.cursor = 'pointer';
+                            header.appendChild(title);
+                            header.appendChild(collapseBtn);
+
+                            const list = document.createElement('div');
+                            list.className = 'toolbox-category-list';
+                            list.style.display = 'flex';
+                            list.style.flexDirection = 'column';
+                            list.style.gap = '8px';
+                            list.style.padding = '6px 4px 12px 4px';
+
+                            groups[cat].forEach(m => {
+                                const card = document.createElement('div');
+                                card.className = 'toolbox-card';
+                                card.style.display = 'flex';
+                                card.style.alignItems = 'center';
+                                card.style.gap = '10px';
+                                card.style.padding = '8px';
+                                card.style.borderRadius = '8px';
+                                card.style.background = 'rgba(255,255,255,0.02)';
+                                card.style.cursor = 'pointer';
+                                card.style.wordBreak = 'break-word';
+                                card.setAttribute('data-defkey', m.defKey || String(m.id));
+
+                                const img = document.createElement('img');
+                                // Use repository helper if available
+                                const repoIcon = (typeof fetchScene._machineRepoIconPath === 'function') ? fetchScene._machineRepoIconPath(m) : null;
+                                img.src = repoIcon || (m.image ? ('/' + m.image) : '/processingplant.png');
+                                img.alt = m.name || '';
+                                img.style.width = '36px';
+                                img.style.height = '36px';
+                                img.style.objectFit = 'contain';
+                                img.style.flex = '0 0 36px';
+
+                                const text = document.createElement('div');
+                                text.style.flex = '1';
+                                const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight = '600'; nm.style.fontSize = '13px'; nm.style.lineHeight = '1.2';
+                                const catline = document.createElement('div'); catline.textContent = (m.category || '').toString(); catline.style.fontSize = '12px'; catline.style.opacity = '0.85';
+                                text.appendChild(nm); text.appendChild(catline);
+
+                                card.appendChild(img); card.appendChild(text);
+
+                                card.addEventListener('click', (ev) => {
+                                    ev.preventDefault();
+                                    const controller = fetchScene._placementController;
+                                    const key = m.defKey || String(m.id);
+                                    if (controller && typeof controller.beginPlacement === 'function') {
+                                        try { controller.beginPlacement(key); } catch (e) { /* ignore */ }
+                                    }
+                                });
+
+                                list.appendChild(card);
+                            });
+
+                            header.addEventListener('click', () => {
+                                const expanded = list.style.display !== 'none';
+                                list.style.display = expanded ? 'none' : 'flex';
+                                collapseBtn.textContent = expanded ? '▸' : '▾';
+                                collapseBtn.setAttribute('aria-expanded', String(!expanded));
+                            });
+
+                            section.appendChild(header);
+                            section.appendChild(list);
+                            container.appendChild(section);
+                        });
+
+                        // Search filter
+                        search.addEventListener('input', (e) => {
+                            const q = (e.target.value || '').toLowerCase().trim();
+                            container.querySelectorAll('.toolbox-card').forEach(card => {
+                                const name = (card.querySelector('div') && card.querySelector('div').innerText) || '';
+                                card.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none';
+                            });
+                        });
                     }
-                });
+                } catch (e) {
+                    console.warn('Toolbox population failed', e);
+                }
                 // BuildingManager was instantiated eagerly during scene create(); definitions have populated.
             } catch (err) {
                 console.error('Failed to load machines from API:', err);

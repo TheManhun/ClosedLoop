@@ -29,4 +29,11 @@ export default class MachineRepository {
     }
 
     isLoaded() { return this._loaded; }
+
+    // Return a URL path to use as an icon for the machine. Prefer `icon` but fall back to `image`.
+    iconPath(machine) {
+        if (!machine) return null;
+        const name = machine.icon || machine.image || null;
+        return name ? ('/' + name) : null;
+    }
 }
