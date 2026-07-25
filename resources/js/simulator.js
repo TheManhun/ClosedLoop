@@ -103,6 +103,23 @@ class PrototypeScene extends Phaser.Scene {
                 search.type = 'search'; search.placeholder = 'Search machines...'; search.id = 'toolbox-search'; search.style.width = '100%'; search.style.boxSizing = 'border-box'; search.style.padding = '8px'; search.style.marginBottom = '8px';
                 const container = document.createElement('div'); container.id = 'toolbox-categories';
                 toolboxBody.innerHTML = ''; toolboxBody.appendChild(search); toolboxBody.appendChild(container);
+                // Selection and tooltip helpers for toolbox UI
+                let _selectedToolboxCard = null;
+                const clearSelectedToolboxCard = () => {
+                    if (_selectedToolboxCard) {
+                        _selectedToolboxCard.classList.remove('selected');
+                        _selectedToolboxCard = null;
+                    }
+                };
+                const setSelectedToolboxCard = (card) => {
+                    clearSelectedToolboxCard();
+                    if (card) { card.classList.add('selected'); _selectedToolboxCard = card; }
+                };
+                // Tooltip element (singleton)
+                let _toolboxTooltip = document.getElementById('toolbox-tooltip');
+                if (!_toolboxTooltip) {
+                    _toolboxTooltip = document.createElement('div'); _toolboxTooltip.id = 'toolbox-tooltip'; _toolboxTooltip.className = 'toolbox-tooltip'; _toolboxTooltip.style.display = 'none'; document.body.appendChild(_toolboxTooltip);
+                }
                 // group
                 const groups = {};
                 machines.forEach(m => { const cat = (m.category||'other').toString(); groups[cat]=groups[cat]||[]; groups[cat].push(m); });
@@ -127,11 +144,62 @@ class PrototypeScene extends Phaser.Scene {
                     header.appendChild(title); header.appendChild(collapseBtn);
                     const list=document.createElement('div'); list.className='toolbox-category-list'; list.style.display='flex'; list.style.flexDirection='column'; list.style.gap='8px'; list.style.padding='6px 4px 12px 4px';
                     groups[cat].forEach(m=>{
-                        const card=document.createElement('div'); card.className='toolbox-card'; card.style.display='flex'; card.style.alignItems='center'; card.style.gap='10px'; card.style.padding='8px'; card.style.borderRadius='8px'; card.style.background='rgba(255,255,255,0.02)'; card.style.cursor='pointer'; card.style.wordBreak='break-word'; card.setAttribute('data-defkey', m.defKey||String(m.id));
-                        const img=document.createElement('img'); img.src = m.icon ? ('/'+m.icon) : (m.image ? ('/'+m.image) : '/processingplant.png'); img.alt = m.name || ''; img.style.width='36px'; img.style.height='36px'; img.style.objectFit='contain'; img.style.flex='0 0 36px';
-                        const text=document.createElement('div'); text.style.flex='1'; const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight='600'; nm.style.fontSize='13px'; nm.style.lineHeight='1.2'; const catline=document.createElement('div'); catline.textContent = categoryDisplay(m.category||''); catline.style.fontSize='12px'; catline.style.opacity='0.85'; catline.className = 'toolbox-card-category'; text.appendChild(nm); text.appendChild(catline);
-                        card.appendChild(img); card.appendChild(text);
-                        card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = this._placementController; const key = m.defKey||String(m.id); if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} } });
+                        const card=document.createElement('div'); card.className='toolbox-card'; card.style.display='flex'; card.style.alignItems='center'; card.style.gap='12px'; card.style.padding='10px'; card.style.borderRadius='8px'; card.style.cursor='pointer'; card.style.wordBreak='break-word'; card.setAttribute('data-defkey', m.defKey||String(m.id));
+                        // icon wrapper
+                        const iconWrap = document.createElement('div'); iconWrap.className = 'toolbox-card-icon';
+                        const img=document.createElement('img'); img.src = (typeof fetchScene._machineRepoIconPath === 'function') ? (fetchScene._machineRepoIconPath(m) || (m.image ? ('/'+m.image) : '/processingplant.png')) : (m.icon ? ('/'+m.icon) : (m.image ? ('/'+m.image) : '/processingplant.png'));
+                        img.alt = m.name || '';
+                        img.style.width='56px'; img.style.height='56px'; img.style.objectFit='contain'; img.style.flex='0 0 56px';
+                        iconWrap.appendChild(img);
+
+                        const text=document.createElement('div'); text.style.flex='1'; text.style.minWidth='0';
+                        const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = m.name || (m.defKey || m.id);
+                        const catline=document.createElement('div'); catline.textContent = categoryDisplay(m.category||''); catline.className = 'toolbox-card-category';
+                        text.appendChild(nm); text.appendChild(catline);
+
+                        card.appendChild(iconWrap); card.appendChild(text);
+
+                        // Tooltip handlers (use MachineRepository data already loaded)
+                        card.addEventListener('mouseenter', (ev) => {
+                            try {
+                                const repo = new MachineRepository();
+                                // build tooltip content from machine record `m`
+                                const lines = [];
+                                if (m.name) lines.push(`<div class="title">${m.name}</div>`);
+                                if (m.description) lines.push(`<div class="meta">${m.description}</div>`);
+                                const parts = [];
+                                if (Array.isArray(m.inputs) && m.inputs.length) parts.push(`<div class="line"><strong>Inputs:</strong> ${m.inputs.map(i=> (i.quantity||i.amount||'') + (i.units?(' '+i.units):'') + ' ' + (i.resourceId||i.name||'')).join(', ')}</div>`);
+                                if (Array.isArray(m.outputs) && m.outputs.length) parts.push(`<div class="line"><strong>Outputs:</strong> ${m.outputs.map(o=> (o.quantity||o.amount||'') + (o.units?(' '+o.units):'') + ' ' + (o.resourceId||o.name||'')).join(', ')}</div>`);
+                                if (m.powerRequired !== undefined) parts.push(`<div class="line"><strong>Power Req:</strong> ${m.powerRequired}</div>`);
+                                if (m.powerProduced !== undefined) parts.push(`<div class="line"><strong>Power Prod:</strong> ${m.powerProduced}</div>`);
+                                const html = lines.concat(parts).join('');
+                                _toolboxTooltip.innerHTML = html;
+                                _toolboxTooltip.style.display = 'block';
+                                const rect = card.getBoundingClientRect();
+                                const left = Math.min(window.innerWidth - 340, rect.right + 8);
+                                const top = Math.max(8, rect.top + (rect.height/2) - 40);
+                                _toolboxTooltip.style.left = (left) + 'px';
+                                _toolboxTooltip.style.top = (top) + 'px';
+                            } catch (e) { /* ignore */ }
+                        });
+                        card.addEventListener('mouseleave', ()=>{ try {_toolboxTooltip.style.display='none'; } catch(e){} });
+
+                        // Click: begin placement and mark selected
+                        card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = fetchScene._placementController; const key = m.defKey||String(m.id); if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} }
+                            // update selected class
+                            setSelectedToolboxCard(card);
+                            // watch controller state to clear selection when placement ends
+                            try {
+                                const watcher = setInterval(()=>{
+                                    try {
+                                        if (!controller || typeof controller.isPlacing !== 'function' || !controller.isPlacing()) {
+                                            clearSelectedToolboxCard(); clearInterval(watcher);
+                                        }
+                                    } catch(e){ clearSelectedToolboxCard(); clearInterval(watcher); }
+                                }, 200);
+                            } catch(e){}
+                        });
+
                         list.appendChild(card);
                     });
                     header.addEventListener('click', ()=>{ const expanded = list.style.display !== 'none'; list.style.display = expanded ? 'none' : 'flex'; collapseBtn.textContent = expanded ? '▸' : '▾'; collapseBtn.setAttribute('aria-expanded', String(!expanded)); });
@@ -316,47 +384,69 @@ class PrototypeScene extends Phaser.Scene {
                             list.style.padding = '6px 4px 12px 4px';
 
                             groups[cat].forEach(m => {
-                                const card = document.createElement('div');
-                                card.className = 'toolbox-card';
-                                card.style.display = 'flex';
-                                card.style.alignItems = 'center';
-                                card.style.gap = '10px';
-                                card.style.padding = '8px';
-                                card.style.borderRadius = '8px';
-                                card.style.background = 'rgba(255,255,255,0.02)';
-                                card.style.cursor = 'pointer';
-                                card.style.wordBreak = 'break-word';
-                                card.setAttribute('data-defkey', m.defKey || String(m.id));
+                                    const card = document.createElement('div');
+                                    card.className = 'toolbox-card';
+                                    card.style.display = 'flex';
+                                    card.style.alignItems = 'center';
+                                    card.style.gap = '12px';
+                                    card.style.padding = '10px';
+                                    card.style.borderRadius = '8px';
+                                    card.style.cursor = 'pointer';
+                                    card.style.wordBreak = 'break-word';
+                                    card.setAttribute('data-defkey', m.defKey || String(m.id));
 
-                                const img = document.createElement('img');
-                                // Use repository helper if available
-                                const repoIcon = (typeof fetchScene._machineRepoIconPath === 'function') ? fetchScene._machineRepoIconPath(m) : null;
-                                img.src = repoIcon || (m.image ? ('/' + m.image) : '/processingplant.png');
-                                img.alt = m.name || '';
-                                img.style.width = '36px';
-                                img.style.height = '36px';
-                                img.style.objectFit = 'contain';
-                                img.style.flex = '0 0 36px';
+                                    const iconWrap = document.createElement('div'); iconWrap.className = 'toolbox-card-icon';
+                                    const img = document.createElement('img');
+                                    const repoIcon = (typeof fetchScene._machineRepoIconPath === 'function') ? fetchScene._machineRepoIconPath(m) : null;
+                                    img.src = repoIcon || (m.image ? ('/' + m.image) : '/processingplant.png');
+                                    img.alt = m.name || '';
+                                    img.style.width = '56px'; img.style.height = '56px'; img.style.objectFit = 'contain'; img.style.flex = '0 0 56px';
+                                    iconWrap.appendChild(img);
 
-                                const text = document.createElement('div');
-                                text.style.flex = '1';
-                                const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.style.fontWeight = '600'; nm.style.fontSize = '13px'; nm.style.lineHeight = '1.2';
-                                const catline = document.createElement('div'); catline.textContent = categoryDisplay((m.category || '').toString()); catline.style.fontSize = '12px'; catline.style.opacity = '0.85'; catline.className = 'toolbox-card-category';
-                                text.appendChild(nm); text.appendChild(catline);
+                                    const text = document.createElement('div');
+                                    text.style.flex = '1'; text.style.minWidth='0';
+                                    const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.className='toolbox-card-name';
+                                    const catline = document.createElement('div'); catline.textContent = categoryDisplay((m.category || '').toString()); catline.className = 'toolbox-card-category';
+                                    text.appendChild(nm); text.appendChild(catline);
 
-                                card.appendChild(img); card.appendChild(text);
+                                    card.appendChild(iconWrap); card.appendChild(text);
 
-                                card.addEventListener('click', (ev) => {
-                                    ev.preventDefault();
-                                    const controller = fetchScene._placementController;
-                                    const key = m.defKey || String(m.id);
-                                    if (controller && typeof controller.beginPlacement === 'function') {
-                                        try { controller.beginPlacement(key); } catch (e) { /* ignore */ }
-                                    }
+                                    // Tooltip using local data
+                                    card.addEventListener('mouseenter', ()=>{
+                                        try {
+                                            const tooltip = document.getElementById('toolbox-tooltip');
+                                            if (!tooltip) return;
+                                            const parts = [];
+                                            if (m.name) parts.push('<div class="title">'+m.name+'</div>');
+                                            if (m.description) parts.push('<div class="meta">'+m.description+'</div>');
+                                            if (Array.isArray(m.inputs) && m.inputs.length) parts.push('<div class="line"><strong>Inputs:</strong> '+m.inputs.map(i=>((i.quantity||i.amount||'')+(i.units?(' '+i.units):'')+' '+(i.resourceId||i.name||''))).join(', ')+'</div>');
+                                            if (Array.isArray(m.outputs) && m.outputs.length) parts.push('<div class="line"><strong>Outputs:</strong> '+m.outputs.map(o=>((o.quantity||o.amount||'')+(o.units?(' '+o.units):'')+' '+(o.resourceId||o.name||''))).join(', ')+'</div>');
+                                            if (m.powerRequired !== undefined) parts.push('<div class="line"><strong>Power Req:</strong> '+m.powerRequired+'</div>');
+                                            if (m.powerProduced !== undefined) parts.push('<div class="line"><strong>Power Prod:</strong> '+m.powerProduced+'</div>');
+                                            tooltip.innerHTML = parts.join(''); tooltip.style.display='block';
+                                            const rect = card.getBoundingClientRect();
+                                            const left = Math.min(window.innerWidth - 340, rect.right + 8);
+                                            const top = Math.max(8, rect.top + (rect.height/2) - 40);
+                                            tooltip.style.left = left + 'px'; tooltip.style.top = top + 'px';
+                                        } catch(e){}
+                                    });
+                                    card.addEventListener('mouseleave', ()=>{ const tooltip = document.getElementById('toolbox-tooltip'); if (tooltip) tooltip.style.display='none'; });
+
+                                    card.addEventListener('click', (ev) => {
+                                        ev.preventDefault();
+                                        const controller = fetchScene._placementController;
+                                        const key = m.defKey || String(m.id);
+                                        if (controller && typeof controller.beginPlacement === 'function') {
+                                            try { controller.beginPlacement(key); } catch (e) { /* ignore */ }
+                                        }
+                                        // mark selected visually
+                                        try { document.querySelectorAll('.toolbox-card.selected').forEach(c=>c.classList.remove('selected')); card.classList.add('selected');
+                                            const watcher = setInterval(()=>{ try { if (!controller || typeof controller.isPlacing !== 'function' || !controller.isPlacing()) { card.classList.remove('selected'); clearInterval(watcher); } } catch(e){ card.classList.remove('selected'); clearInterval(watcher);} }, 200);
+                                        } catch(e){}
+                                    });
+
+                                    list.appendChild(card);
                                 });
-
-                                list.appendChild(card);
-                            });
 
                             header.addEventListener('click', () => {
                                 const expanded = list.style.display !== 'none';
