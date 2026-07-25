@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { EventBus } from './simulator/core/EventBus.js';
 import { GridSystem } from './simulator/core/GridSystem.js';
 import { CameraController } from './simulator/core/CameraController.js';
+import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -76,145 +77,18 @@ class PrototypeScene extends Phaser.Scene {
         // Buildings placed in the scene keyed by "x,y"
         this._buildings = new Map();
         this._nextBuildingId = 1;
-        // Simple building definitions (kept small so Laravel can inject JSON later)
-        // Refactored shape: { name, image, category, footprint, permanent, deletable, movable, suggestedNext, placeable }
-        this._buildingDefs = {
-            municipalWaste: {
-                name: 'Municipal Waste',
-                // use the original trash sprite so Municipal Waste appears as before
-                image: 'trash',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'MW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            technologyWaste: {
-                name: 'Technology Waste',
-                image: 'src_tw',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'TW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            scrapTyres: {
-                name: 'Scrap Tyres',
-                image: 'src_st',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'ST',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            farmWaste: {
-                name: 'Farm Waste',
-                image: 'src_fw',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'FW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            industrialWaste: {
-                name: 'Industrial Waste',
-                image: 'src_iw',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'IW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            buildingWaste: {
-                name: 'Building Waste',
-                image: 'src_bw',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'BW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            sewerage: {
-                name: 'Sewerage',
-                image: 'src_sw',
-                category: 'source',
-                footprint: [4, 4],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'SW',
-                suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
-            },
-            // Existing process unit
-            processUnit: {
-                name: 'Process Unit',
-                image: 'processingPlant',
-                category: 'process',
-                footprint: [2, 2],
-                permanent: false,
-                deletable: true,
-                movable: true,
-                placeable: true,
-                suggestedNext: []
-            },
-            sortingFacility: {
-                name: 'Sorting Facility',
-                image: 'sorting_facility',
-                category: 'process',
-                footprint: [3, 2],
-                permanent: false,
-                deletable: true,
-                movable: true,
-                placeable: true,
-                suggestedNext: []
-            }
-            ,
-            externalGrid: {
-                name: 'External Grid',
-                image: 'external_grid',
-                category: 'infrastructure',
-                footprint: [3, 2],
-                permanent: true,
-                deletable: false,
-                movable: true,
-                placeable: false,
-                shortCode: 'GRID',
-                suggestedNext: []
-            }
-        };
-        // Fetch machine definitions from API and augment _buildingDefs and toolbar
-        const fetchScene = this;
-        async function fetchAndBuildMachineToolbar() {
-            const url = '/api/machines';
-            try {
-                const res = await fetch(url, { credentials: 'same-origin' });
-                if (!res.ok) throw new Error('Fetch failed: ' + res.status + ' ' + res.statusText);
-                const machines = await res.json();
-                if (!Array.isArray(machines) || machines.length === 0) {
-                    // no machines returned; nothing to do
-                    return;
-                }
+        // Building definitions handled by BuildingDefinitions (keeps defaults and loads API machines)
+        this._buildingDefinitions = new BuildingDefinitions();
+        // Expose a compatibility object used by the rest of the scene
+        this._buildingDefs = this._buildingDefinitions.getAll();
 
-                // Queue image loads for Phaser and extend building definitions
+        const fetchScene = this;
+        // Fire-and-forget: load remote machines and augment definitions; toolbar DOM rendering remains in simulator.js
+        this._buildingDefinitions.init().then((machines) => {
+            try {
+                if (!Array.isArray(machines) || machines.length === 0) return;
+
+                // Queue image loads for Phaser and extend building definitions to use scene image keys
                 machines.forEach((m) => {
                     const id = String(m.id);
                     const imageKey = 'machine_' + id;
@@ -290,9 +164,7 @@ class PrototypeScene extends Phaser.Scene {
                         toolbarEl.appendChild(btn);
                     }
                 });
-
             } catch (err) {
-                // Log error and show a small visible message; keep existing hardcoded defs
                 console.error('Failed to load machines from API:', err);
                 let msgEl = document.getElementById('simulator-api-error');
                 if (!msgEl) {
@@ -312,10 +184,26 @@ class PrototypeScene extends Phaser.Scene {
                     wrapper.appendChild(msgEl);
                 }
             }
-        }
-
-        // Fire and forget: fetch machine definitions and build toolbar
-        try { fetchAndBuildMachineToolbar(); } catch (e) { console.warn('Machine toolbar init failed', e); }
+        }).catch((err) => {
+            console.error('Failed to load machines from API:', err);
+            let msgEl = document.getElementById('simulator-api-error');
+            if (!msgEl) {
+                msgEl = document.createElement('div');
+                msgEl.id = 'simulator-api-error';
+                msgEl.style.position = 'absolute';
+                msgEl.style.top = '48px';
+                msgEl.style.left = '8px';
+                msgEl.style.zIndex = 20000;
+                msgEl.style.background = 'rgba(255,75,75,0.9)';
+                msgEl.style.color = '#fff';
+                msgEl.style.padding = '6px 8px';
+                msgEl.style.borderRadius = '6px';
+                msgEl.style.fontSize = '13px';
+                msgEl.textContent = 'Could not load machine definitions from API — using built-in defaults.';
+                const wrapper = document.querySelector('.simulator-root-wrapper') || document.body;
+                wrapper.appendChild(msgEl);
+            }
+        });
         // Placeholders removed — images are loaded from public/ instead
         // Placement mode flag toggled by toolbar selection
         this._placementMode = false;
