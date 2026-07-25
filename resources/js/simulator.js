@@ -4,6 +4,7 @@ import { GridSystem } from './simulator/core/GridSystem.js';
 import { CameraController } from './simulator/core/CameraController.js';
 import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
 import BuildingManager from './simulator/managers/BuildingManager.js';
+import InputHandler from './simulator/core/InputHandler.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -84,6 +85,8 @@ class PrototypeScene extends Phaser.Scene {
 
         // BuildingManager instantiated now to centralize building lifecycle
         this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
+        // InputHandler centralizes pointer and keyboard routing
+        this._inputHandler = new InputHandler(this, this._buildingManager, this._cameraController);
         // BuildingManager instantiated; do not mirror its private fields here.
 
         const fetchScene = this;
@@ -246,8 +249,7 @@ class PrototypeScene extends Phaser.Scene {
 
         // Camera wheel/pan/reset handled by CameraController (see resources/js/simulator/core/CameraController.js)
 
-        // Pointer down: camera controller handles middle-button drag; scene should ignore middle-button events
-        this.input.on('pointerdown', (pointer) => {
+        /*
                 if (pointer.middleButtonDown()) {
                     // CameraController will handle drag start and context menu hiding.
                     return;
@@ -318,7 +320,7 @@ class PrototypeScene extends Phaser.Scene {
             }
         });
 
-        this.input.on('pointerup', (pointer) => {
+        // this.input.on('pointerup', (pointer) => {
 
             // Handle left-button release for drag-to-move finalization/click
             if (pointer.leftButtonReleased()) {
@@ -367,7 +369,7 @@ class PrototypeScene extends Phaser.Scene {
             }
         });
 
-        this.input.on('pointermove', (pointer) => {
+        // this.input.on('pointermove', (pointer) => {
             // Camera panning handled by CameraController; continue with building drag/hover logic
 
             // Handle possible building drag
@@ -425,7 +427,7 @@ class PrototypeScene extends Phaser.Scene {
 
             // Always update hover cell under pointer when not dragging a building
             this._updateHover(pointer);
-        });
+        */
 
         // Camera reset handled by CameraController
         // Toolbar show/hide helpers
@@ -474,17 +476,7 @@ class PrototypeScene extends Phaser.Scene {
             });
         }
 
-        // Exit placement mode on Escape
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && this._placementMode) {
-                this._placementMode = false;
-                this._placementDefKey = null;
-                // clear selection as well
-                try { this._selectedCell = null; this._drawSelection(); } catch (err) {}
-                try { document.querySelectorAll('.simulator-toolbar .toolbar-button.active').forEach(b => { b.classList.remove('active'); b.setAttribute('aria-pressed','false'); }); } catch (e) {}
-                try { this._hoverGraphics.clear(); } catch (e) {}
-            }
-        });
+        // Exit placement mode on Escape - handled by InputHandler
 
         // Hook up Show Names toggle
         const showNamesBtn = document.getElementById('toggle-show-names-btn');
@@ -653,27 +645,10 @@ class PrototypeScene extends Phaser.Scene {
             });
         }
 
-        // Disable native context menu inside simulator area and show custom menu
-        const rootEl = document.getElementById('simulator-root');
-        if (rootEl) {
-            rootEl.addEventListener('contextmenu', (ev) => {
-                ev.preventDefault();
-                const rect = rootEl.getBoundingClientRect();
-                const x = ev.clientX;
-                const y = ev.clientY;
-                // map to world to determine target
-                const world = cam.getWorldPoint((x - rect.left) , (y - rect.top));
-                const gs = this._gridConfig;
-                const ix = Math.floor(world.x / gs.minor);
-                const iy = Math.floor(world.y / gs.minor);
-                const rec = this._buildingManager.getMachineAt(ix, iy);
-                if (rec) {
-                    showContextMenuFor('building', rec, x, y);
-                    return;
-                }
-                showContextMenuFor('ground', null, x, y);
-            });
-        }
+        // Expose context/menu helpers for InputHandler to call
+        scene.showContextMenuFor = showContextMenuFor;
+
+        // Context menu handling moved to InputHandler
 
         // Shared delete function
         function deleteBuilding(record) {
@@ -691,58 +666,10 @@ class PrototypeScene extends Phaser.Scene {
             scene._drawSelection();
         }
 
-        // Close context menu on left-click elsewhere or Escape
-        document.addEventListener('pointerdown', (ev) => {
-            const el = scene._contextMenuEl;
-            if (el) {
-                if (ev.button === 0 && !el.contains(ev.target)) hideContextMenu();
-            }
-            // Also close machine info panel when clicking outside it
-            const panel = document.getElementById('machine-info-panel');
-            if (panel && ev.button === 0) {
-                if (!panel.contains(ev.target)) {
-                    panel.style.display = 'none';
-                }
-            }
-        });
-        document.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Escape') hideContextMenu();
-        });
+        // Expose delete helper for InputHandler
+        scene.deleteBuilding = deleteBuilding;
 
-        // Keyboard delete/backspace handling for deletable selected buildings
-        document.addEventListener('keydown', (ev) => {
-            // ignore if focused on input or editable element
-            const active = document.activeElement;
-            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
-
-                if ((ev.key === 'Delete' || ev.key === 'Backspace') && this._selectedCell) {
-                const rec = this._buildingManager.getMachineAt(this._selectedCell.ix, this._selectedCell.iy);
-                if (rec && rec.deletable) {
-                    ev.preventDefault();
-                    deleteBuilding(rec);
-                    hideContextMenu();
-                }
-            }
-        });
-
-        // Cancel an in-progress drag when Escape is pressed
-        this.input.keyboard.on('keydown-ESC', () => {
-            if (this._dragState && this._dragState.active && this._dragState.record) {
-                const record = this._dragState.record;
-                const gs = this._gridConfig;
-                // return container to original position
-                record.container.x = this._dragState.origGrid.x * gs.minor;
-                record.container.y = this._dragState.origGrid.y * gs.minor;
-                // clear preview and reset state
-                this._dragGraphics.clear();
-                this._dragState.active = false;
-                this._dragState.isDragging = false;
-                this._dragState.record = null;
-                // restore selection to original origin
-                this._selectedCell = { ix: this._dragState.origGrid.x, iy: this._dragState.origGrid.y };
-                this._drawSelection();
-            }
-        });
+        // Input handling moved to InputHandler
         }
 
         update() {
@@ -895,6 +822,9 @@ PrototypeScene.prototype._drawGrid = function (force) {
                     // keep panel visible but don't crash
                 }
             }
+
+            // Expose machine info helper for InputHandler
+            scene.showMachineInfoFor = showMachineInfoFor;
 
             function renderMachineInfo(panel, m, record) {
                 panel.innerHTML = '';
