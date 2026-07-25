@@ -59,21 +59,38 @@ export default class BuildingManager {
         const container = this.scene.add.container(x, y);
 
         const [fw, fh] = def.footprint;
-        const textureKey = def.image;
+        const textureKey = def.textureKey || def.image || 'processingPlant';
         const centerX = (fw * gs.minor) / 2;
         const centerY = (fh * gs.minor) / 2 - 6;
+        // If texture missing, scene.textures.exists will let us fallback later
         const img = this.scene.add.image(centerX, centerY, textureKey);
 
+        // Compute desired display size based on footprint while preserving aspect ratio
         const refFootprint = (this.defs.get('municipalWaste') && this.defs.get('municipalWaste').footprint) ? this.defs.get('municipalWaste').footprint : [4,4];
         const refW = refFootprint[0];
         const refH = refFootprint[1];
-        let displayW = fw * gs.minor * 0.85;
-        let displayH = fh * gs.minor * 0.85;
+        let maxDisplayW = fw * gs.minor * 0.85;
+        let maxDisplayH = fh * gs.minor * 0.85;
         if (fw < refW || fh < refH) {
-            displayW = refW * gs.minor * 0.85;
-            displayH = refH * gs.minor * 0.85;
+            maxDisplayW = refW * gs.minor * 0.85;
+            maxDisplayH = refH * gs.minor * 0.85;
         }
-        img.setDisplaySize(displayW, displayH);
+
+        // Preserve aspect ratio using natural texture size when available
+        try {
+            const tex = img.texture;
+            const src = tex && tex.getSourceImage && tex.getSourceImage();
+            const imgW = (src && src.width) || img.width || maxDisplayW;
+            const imgH = (src && src.height) || img.height || maxDisplayH;
+            const scale = Math.min(maxDisplayW / imgW, maxDisplayH / imgH);
+            if (isFinite(scale) && scale > 0) {
+                img.setScale(scale);
+            } else {
+                img.setDisplaySize(maxDisplayW, maxDisplayH);
+            }
+        } catch (e) {
+            img.setDisplaySize(maxDisplayW, maxDisplayH);
+        }
         img.setOrigin(0.5, 0.5);
         container.add(img);
 
@@ -103,7 +120,24 @@ export default class BuildingManager {
 
         // initialize status
         record.status = 'neutral';
+        // External grid special metadata and temporary runtime values
+        if (defKey === 'externalGrid') {
+            record.isExternalGrid = true;
+            // Use def-specified capacities/rates if present
+            record.resourceId = def.resourceId || 'electricity';
+            record.importCapacity = def.importCapacity || 0;
+            record.exportCapacity = def.exportCapacity || 0;
+            record.importCost = def.importCost || 0;
+            record.exportRate = def.exportRate || 0;
+            // current signed flow (negative = import into facility)
+            record.flow = 0; // temporary default — 0 idle
+        }
         if (typeof this.scene._updateMachineStatusVisual === 'function') this.scene._updateMachineStatusVisual(record);
+
+        // If external grid, request cable update/creation
+        if (record.isExternalGrid && typeof this.scene._updateCablesForRecord === 'function') {
+            try { this.scene._updateCablesForRecord(record); } catch (e) { console.warn('Update cables failed', e); }
+        }
 
         return record;
     }

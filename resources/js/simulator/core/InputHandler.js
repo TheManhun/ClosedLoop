@@ -167,10 +167,12 @@ export default class InputHandler {
             }
         }
 
-        // Not dragging: if placement controller active, let it handle hover, otherwise call scene helper
+        // Not dragging: if placement controller active, let it handle hover, otherwise delegate to connection controller or scene helper
         try {
             if (this.scene._placementController && this.scene._placementController.isPlacing()) {
                 this.scene._placementController.handlePointerMove(pointer);
+            } else if (this.scene._connectionController && this.scene._connectionController.isConnecting()) {
+                this.scene._connectionController.handlePointerMove(pointer);
             } else if (typeof this.scene._updateHover === 'function') {
                 this.scene._updateHover(pointer);
             }
@@ -216,6 +218,8 @@ export default class InputHandler {
             this._dragState.isDragging = false;
             this._dragState.record = null;
         }
+          // If connection controller active, forward pointer up
+          try { if (this.scene._connectionController && this.scene._connectionController.isConnecting()) { this.scene._connectionController.handlePointerDown(pointer); } } catch (e) {}
     }
 
     _onKeyDown(ev) {
@@ -231,6 +235,11 @@ export default class InputHandler {
             try {
                 if (this.scene._placementController && this.scene._placementController.isPlacing()) {
                     this.scene._placementController.cancelPlacement();
+                    return;
+                }
+                // Delegate connection cancel
+                if (this.scene._connectionController && this.scene._connectionController.isConnecting()) {
+                    this.scene._connectionController.cancelConnection();
                     return;
                 }
             } catch (e) {}

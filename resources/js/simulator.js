@@ -8,6 +8,9 @@ import BuildingManager from './simulator/managers/BuildingManager.js';
 import InputHandler from './simulator/core/InputHandler.js';
 import MachineInfoPanel from './simulator/ui/MachineInfoPanel.js';
 import ContextMenu from './simulator/ui/ContextMenu.js';
+import ConnectionDefinitions from './simulator/data/ConnectionDefinitions.js';
+import ConnectionManager from './simulator/managers/ConnectionManager.js';
+import ConnectionController from './simulator/controllers/ConnectionController.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -20,11 +23,13 @@ class PrototypeScene extends Phaser.Scene {
         this.load.image('trash', '/trash.png');
         this.load.image('sorting_facility', '/sorting.png');
         this.load.image('wastewater_headworks', '/waterwasteplant.png');
+        // Specific sewerage plant and raw sewerage resource images
+        this.load.image('sewerage_plant', '/sewerage.png');
         // Resource images provided by user
         this.load.image('src_mw', '/trash.png');
         this.load.image('src_tw', '/e-waste.png');
-        // Note: filename in public/ is 'scraptyrees.png' (typo variant), load that file
-        this.load.image('src_st', '/scraptyrees.png');
+        // Scrap tyres placeholder — use corrected filename
+        this.load.image('src_st', '/scraptyres.png');
         this.load.image('src_fw', '/farmwaste.png');
         this.load.image('src_iw', '/industrial_waste.png');
         this.load.image('src_bw', '/building_waste.png');
@@ -139,8 +144,12 @@ class PrototypeScene extends Phaser.Scene {
                 Object.keys(groups).sort().forEach(cat=>{
                     const section=document.createElement('div'); section.className='toolbox-category';
                     const header=document.createElement('div'); header.className='toolbox-category-header'; header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.padding='6px 4px'; header.style.cursor='pointer';
-                    const title=document.createElement('div'); title.textContent = categoryDisplay(cat)+' ('+groups[cat].length+')'; title.style.fontWeight='700'; title.style.fontSize='13px';
-                    const collapseBtn=document.createElement('button'); collapseBtn.textContent='▾'; collapseBtn.setAttribute('aria-expanded','true'); collapseBtn.style.background='transparent'; collapseBtn.style.border='0'; collapseBtn.style.color='var(--muted)'; collapseBtn.style.cursor='pointer';
+                    const title=document.createElement('div');
+                    const titleName = document.createElement('span'); titleName.className = 'toolbox-category-title'; titleName.textContent = categoryDisplay(cat);
+                    const titleCount = document.createElement('span'); titleCount.className = 'toolbox-category-count'; titleCount.textContent = ' ('+groups[cat].length+')';
+                    title.appendChild(titleName); title.appendChild(titleCount);
+                    title.style.fontWeight='700'; title.style.fontSize='13px';
+                    const collapseBtn=document.createElement('button'); collapseBtn.textContent='▾'; collapseBtn.setAttribute('aria-expanded','true'); collapseBtn.style.background='transparent'; collapseBtn.style.border='0'; collapseBtn.style.color='#9ca3af'; collapseBtn.style.cursor='pointer'; collapseBtn.className='toolbox-collapse-btn';
                     header.appendChild(title); header.appendChild(collapseBtn);
                     const list=document.createElement('div'); list.className='toolbox-category-list'; list.style.display='flex'; list.style.flexDirection='column'; list.style.gap='8px'; list.style.padding='6px 4px 12px 4px';
                     groups[cat].forEach(m=>{
@@ -185,7 +194,10 @@ class PrototypeScene extends Phaser.Scene {
                         card.addEventListener('mouseleave', ()=>{ try {_toolboxTooltip.style.display='none'; } catch(e){} });
 
                         // Click: begin placement and mark selected
-                        card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = fetchScene._placementController; const key = m.defKey||String(m.id); if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} }
+                        card.addEventListener('click', ev=>{ ev.preventDefault(); const controller = fetchScene._placementController; const key = m.defKey||String(m.id);
+                            // Cancel any connection mode
+                            try { if (fetchScene._connectionController && fetchScene._connectionController.isConnecting()) fetchScene._connectionController.cancelConnection(); } catch(e) {}
+                            if (controller && typeof controller.beginPlacement === 'function') { try { controller.beginPlacement(key); } catch(e){} }
                             // update selected class
                             setSelectedToolboxCard(card);
                             // watch controller state to clear selection when placement ends
@@ -205,6 +217,37 @@ class PrototypeScene extends Phaser.Scene {
                     header.addEventListener('click', ()=>{ const expanded = list.style.display !== 'none'; list.style.display = expanded ? 'none' : 'flex'; collapseBtn.textContent = expanded ? '▸' : '▾'; collapseBtn.setAttribute('aria-expanded', String(!expanded)); });
                     section.appendChild(header); section.appendChild(list); container.appendChild(section);
                 });
+                // Add Connections category
+                try {
+                    const connDefs = ConnectionDefinitions;
+                    const connSection = document.createElement('div'); connSection.className = 'toolbox-category';
+                    const connHeader = document.createElement('div'); connHeader.className = 'toolbox-category-header'; connHeader.style.display='flex'; connHeader.style.justifyContent='space-between'; connHeader.style.alignItems='center'; connHeader.style.padding='6px 4px'; connHeader.style.cursor='pointer';
+                    const connTitle = document.createElement('div'); const connTitleName = document.createElement('span'); connTitleName.className='toolbox-category-title'; connTitleName.textContent='Connections'; const connTitleCount = document.createElement('span'); connTitleCount.className='toolbox-category-count'; connTitleCount.textContent=' (4)'; connTitle.appendChild(connTitleName); connTitle.appendChild(connTitleCount); connTitle.style.fontWeight='700'; connTitle.style.fontSize='13px';
+                    const connCollapse = document.createElement('button'); connCollapse.textContent='▾'; connCollapse.setAttribute('aria-expanded','true'); connCollapse.style.background='transparent'; connCollapse.style.border='0'; connCollapse.style.color='#9ca3af'; connCollapse.style.cursor='pointer'; connCollapse.className='toolbox-collapse-btn';
+                    connHeader.appendChild(connTitle); connHeader.appendChild(connCollapse);
+                    const connList = document.createElement('div'); connList.className='toolbox-category-list'; connList.style.display='flex'; connList.style.flexDirection='column'; connList.style.gap='8px'; connList.style.padding='6px 4px 12px 4px';
+                    Object.keys(connDefs).forEach(k=>{
+                        const d = connDefs[k];
+                        const ccard = document.createElement('div'); ccard.className='toolbox-card'; ccard.style.display='flex'; ccard.style.alignItems='center'; ccard.style.gap='12px'; ccard.style.padding='10px'; ccard.style.borderRadius='8px'; ccard.style.cursor='pointer'; ccard.style.wordBreak='break-word';
+                        if (!d.enabled) ccard.classList.add('disabled');
+                        const iconWrap = document.createElement('div'); iconWrap.className='toolbox-card-icon'; iconWrap.style.width='56px'; iconWrap.style.height='56px'; iconWrap.style.display='flex'; iconWrap.style.alignItems='center'; iconWrap.style.justifyContent='center'; iconWrap.style.background='#0d0f10'; iconWrap.style.borderRadius='6px';
+                        const icon = document.createElement('div'); icon.textContent = d.key === 'power' ? '⚡' : (d.key==='conveyor'?'▤':(d.key==='water'?'💧':'🔥')); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
+                        const txt = document.createElement('div'); txt.style.flex='1'; txt.style.minWidth='0'; const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = d.label; const sub = document.createElement('div'); sub.className='toolbox-card-category'; sub.textContent = d.comingSoon ? 'Coming soon' : d.renderer; txt.appendChild(nm); txt.appendChild(sub);
+                        ccard.appendChild(iconWrap); ccard.appendChild(txt);
+                        ccard.addEventListener('click', (ev)=>{
+                            ev.preventDefault(); try { if (!d.enabled) return; } catch(e){}
+                            // Cancel placement mode
+                            try { if (fetchScene._placementController && fetchScene._placementController.isPlacing()) fetchScene._placementController.cancelPlacement(); } catch(e){}
+                            // Begin connection mode
+                            try { if (fetchScene._connectionController) fetchScene._connectionController.beginConnection(d.key, d); } catch(e){}
+                            // visual selected state
+                            setSelectedToolboxCard(ccard);
+                        });
+                        connList.appendChild(ccard);
+                    });
+                    connHeader.addEventListener('click', ()=>{ const expanded = connList.style.display !== 'none'; connList.style.display = expanded ? 'none' : 'flex'; connCollapse.textContent = expanded ? '▸' : '▾'; connCollapse.setAttribute('aria-expanded', String(!expanded)); });
+                    connSection.appendChild(connHeader); connSection.appendChild(connList); container.appendChild(connSection);
+                } catch(e) {}
                 try { toolbox.classList.add('expanded'); document.body.classList.add('toolbox-is-expanded'); const tog = document.getElementById('toolbox-toggle'); if (tog) tog.setAttribute('aria-expanded','true'); toolbox.style.width='280px'; const simRoot=document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft='280px'; } catch(e){}
                 search.addEventListener('input', (e)=>{ const q=(e.target.value||'').toLowerCase().trim(); container.querySelectorAll('.toolbox-card').forEach(card=>{ const name = (card.querySelector('div') && card.querySelector('div').innerText) || ''; card.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none'; }); });
             } catch (e) { /* ignore */ }
@@ -212,6 +255,9 @@ class PrototypeScene extends Phaser.Scene {
 
         // BuildingManager instantiated now to centralize building lifecycle
         this._buildingManager = new BuildingManager(this, this._gridSystem, this._buildingDefinitions, this._eventBus);
+        // Connection manager/controller for linking buildings
+        this._connectionManager = new ConnectionManager(this, this._buildingManager);
+        import('./simulator/controllers/ConnectionController.js').then(mod => { try { this._connectionController = new mod.default(this, this._connectionManager); } catch(e){} }).catch(e=>{});
         // InputHandler centralizes pointer and keyboard routing
         this._inputHandler = new InputHandler(this, this._buildingManager, this._cameraController);
         // PlacementController handles placement lifecycle and preview
@@ -265,14 +311,16 @@ class PrototypeScene extends Phaser.Scene {
             try {
                 if (!Array.isArray(machines) || machines.length === 0) return;
 
-                // Queue image loads for Phaser and extend building definitions to use scene image keys
+                // Queue image loads for Phaser and extend building definitions to use scene texture keys
+                const queued = [];
                 machines.forEach((m) => {
                     const id = String(m.id);
-                    const imageKey = 'machine_' + id;
+                    const textureKey = m.defKey ? `machine-${m.defKey}` : `machine-${id}`;
                     // Map DB record into internal buildingDef shape; preserve sensible defaults
                     fetchScene._buildingDefs[id] = Object.assign({
                         name: m.name || ('Machine ' + id),
-                        image: imageKey,
+                        image: m.image || null,
+                        textureKey: textureKey,
                         category: 'process',
                         footprint: m.footprint || [2, 2],
                         permanent: !!m.permanent,
@@ -282,18 +330,39 @@ class PrototypeScene extends Phaser.Scene {
                         suggestedNext: []
                     }, fetchScene._buildingDefs[id] || {});
 
-                    // Load image from public root using provided filename
+                    // Load image from public root using provided filename; do not use icon for canvas sprites
                     if (m.image) {
+                        const url = '/' + m.image;
                         try {
-                            fetchScene.load.image(imageKey, '/' + m.image);
+                            // Avoid duplicate queueing
+                            if (!fetchScene.textures.exists(textureKey) && !queued.includes(textureKey)) {
+                                fetchScene.load.image(textureKey, url);
+                                queued.push(textureKey);
+                            }
                         } catch (e) {
-                            console.warn('Failed to queue image load for', m.image, e);
+                            console.warn('Failed to queue image load for', m.defKey || id, url, e);
                         }
                     }
                 });
 
-                // Start the loader for any queued assets
-                try { fetchScene.load.start(); } catch (e) { /* ignore */ }
+                // Start the loader for any queued assets and wait for completion before enabling placement
+                if (queued.length > 0) {
+                    // Attach one-time error listener for verification (will be removed later)
+                    const loadErrors = [];
+                    const onLoadError = (file) => {
+                        loadErrors.push({ key: file.key, url: file.src });
+                        console.warn('Machine image load error', file.key, file.src);
+                    };
+                    fetchScene.load.on('loaderror', onLoadError);
+                    fetchScene.load.once('complete', () => {
+                        // detach listener
+                        try { fetchScene.load.off('loaderror', onLoadError); } catch (e) {}
+                        if (loadErrors.length) {
+                            loadErrors.forEach(err => console.warn('Machine texture failed to load', err));
+                        }
+                    });
+                    try { fetchScene.load.start(); } catch (e) { /* ignore */ }
+                }
 
                 // Populate left Toolbox (existing #toolbox) with machines from repository
                 try {
@@ -363,7 +432,9 @@ class PrototypeScene extends Phaser.Scene {
                             header.style.padding = '6px 4px';
                             header.style.cursor = 'pointer';
                             const title = document.createElement('div');
-                            title.textContent = categoryDisplay(cat) + ' (' + groups[cat].length + ')';
+                            const titleName = document.createElement('span'); titleName.className = 'toolbox-category-title'; titleName.textContent = categoryDisplay(cat);
+                            const titleCount = document.createElement('span'); titleCount.className = 'toolbox-category-count'; titleCount.textContent = ' (' + groups[cat].length + ')';
+                            title.appendChild(titleName); title.appendChild(titleCount);
                             title.style.fontWeight = '700';
                             title.style.fontSize = '13px';
                             const collapseBtn = document.createElement('button');
@@ -371,8 +442,9 @@ class PrototypeScene extends Phaser.Scene {
                             collapseBtn.setAttribute('aria-expanded', 'true');
                             collapseBtn.style.background = 'transparent';
                             collapseBtn.style.border = '0';
-                            collapseBtn.style.color = 'var(--muted)';
+                            collapseBtn.style.color = '#9ca3af';
                             collapseBtn.style.cursor = 'pointer';
+                            collapseBtn.className = 'toolbox-collapse-btn';
                             header.appendChild(title);
                             header.appendChild(collapseBtn);
 
@@ -1138,11 +1210,114 @@ PrototypeScene.prototype._getRecordCenter = function (rec) {
 
 // Power cable creation disabled — stub
 PrototypeScene.prototype._createPowerCable = function (model) { return null; };
+// Create a power cable renderer between an external boundary and the facility
+PrototypeScene.prototype._createPowerCable = function (opts) {
+    // opts: { id, start: {x,y}, end: {x,y} }
+    if (!opts || !opts.start || !opts.end) return null;
+    const container = this.add.container(0, 0);
+    const g = this.add.graphics();
+    // draw main cable line (dark) with subtle outline
+    g.lineStyle(6, 0x0b0b0b, 1);
+    g.beginPath(); g.moveTo(opts.start.x, opts.start.y); g.lineTo(opts.end.x, opts.end.y); g.strokePath();
+    g.lineStyle(2, 0x2b2b2b, 0.6);
+    g.beginPath(); g.moveTo(opts.start.x, opts.start.y); g.lineTo(opts.end.x, opts.end.y); g.strokePath();
+    container.add(g);
 
-// Power cable operations are no-ops in this simplified UI
-PrototypeScene.prototype._removePowerCable = function (id) { return; };
-PrototypeScene.prototype._removeCablesForRecord = function (record) { this._recomputeMachineStatuses(); };
-PrototypeScene.prototype._updateCablesForRecord = function (record) { this._recomputeMachineStatuses(); };
+    // create a small lightning texture once
+    const symKey = 'lightning-symbol';
+    if (!this.textures.exists(symKey)) {
+        const sx = this.add.graphics();
+        sx.fillStyle(0xffffff, 1);
+        sx.fillTriangle(0,0, 10,6, 0,12);
+        sx.generateTexture(symKey, 10, 12);
+        sx.destroy();
+    }
+
+    // prepare moving symbols array
+    const symbols = [];
+    const count = 6;
+    for (let i=0;i<count;i++){
+        const img = this.add.image(opts.start.x, opts.start.y, symKey);
+        img.setOrigin(0.5);
+        img.setDepth(9000);
+        img.setScale(1);
+        container.add(img);
+        symbols.push(img);
+    }
+
+    return { container, graphics: g, symbols, start: opts.start, end: opts.end };
+};
+
+// Remove power cable
+PrototypeScene.prototype._removePowerCable = function (rec) {
+    try {
+        if (rec && rec._powerCable) {
+            try { rec._powerCable.container.destroy(); } catch (e) {}
+            rec._powerCable = null;
+        }
+    } catch (e) {}
+};
+
+// Update cables for a given record; create if missing and animate according to record.flow
+PrototypeScene.prototype._updateCablesForRecord = function (record) {
+    if (!record) return;
+    try {
+        // Only handle externalGrid special boundary
+        if (record.defKey !== 'externalGrid') return this._recomputeMachineStatuses();
+        // compute endpoints: start at external grid center, end a few cells inward
+        const start = this._getRecordCenter(record);
+        // determine inward point (to the left) by one cell width times 3
+        const gs = this._gridConfig;
+        const inward = { x: start.x - (3 * gs.minor), y: start.y };
+
+        // create cable if missing
+        if (!record._powerCable) {
+            record._powerCable = this._createPowerCable({ id: record.id, start, end: inward });
+        }
+
+        const pc = record._powerCable;
+        if (!pc) return;
+
+        // set symbol color based on flow sign
+        const flow = record.flow || 0;
+        let color = 0x9ca3af; // idle grey
+        if (flow < 0) color = 0xffbf00; // amber importing
+        else if (flow > 0) color = 0x39ff88; // green exporting
+
+        // animate symbols along the cable
+        const sx = pc.start.x, sy = pc.start.y, ex = pc.end.x, ey = pc.end.y;
+        const dx = ex - sx, dy = ey - sy;
+        const len = Math.sqrt(dx*dx + dy*dy);
+        const duration = this._getPulseInterval(Math.abs(flow)) || 1200;
+        for (let i=0;i<pc.symbols.length;i++){
+            const img = pc.symbols[i];
+            img.setTint(color);
+            // stagger delay
+            const delay = (i * (duration / pc.symbols.length));
+            // compute direction: for importing (flow<0) animate from start->end; for exporting invert
+            const from = (flow >= 0) ? { x: ex, y: ey } : { x: sx, y: sy };
+            const to = (flow >= 0) ? { x: sx, y: sy } : { x: ex, y: ey };
+            // Stop existing tween if any
+            if (img._pulseTween) { try { img._pulseTween.stop(); } catch(e){} }
+            img.x = from.x; img.y = from.y;
+            img.alpha = (flow === 0) ? 0.25 : 0.95;
+            img.rotation = Math.atan2(dy, dx);
+            img._pulseTween = this.tweens.add({
+                targets: img,
+                x: { from: from.x, to: to.x },
+                y: { from: from.y, to: to.y },
+                duration: duration,
+                delay: delay,
+                ease: 'Linear',
+                repeat: -1
+            });
+        }
+        // also update machine status visual to show any warnings
+        this._recomputeMachineStatuses();
+    } catch (e) {
+        console.warn('Failed to update cables for record', record, e);
+    }
+};
 
 PrototypeScene.prototype._getPulseInterval = function (powerMW) {
     // Placeholder mapping; future scaling can use powerMW

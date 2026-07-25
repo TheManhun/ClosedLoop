@@ -114,7 +114,15 @@ export default class BuildingDefinitions {
             externalGrid: {
                 name: 'External Grid',
                 image: 'external_grid',
-                category: 'infrastructure',
+                category: 'energy',
+                type: 'boundary',
+                resourceId: 'electricity',
+                supportsImport: true,
+                supportsExport: true,
+                importCapacity: 1000,
+                exportCapacity: 1000,
+                importCost: 50,
+                exportRate: 10,
                 footprint: [3, 2],
                 permanent: true,
                 deletable: false,
@@ -141,9 +149,11 @@ export default class BuildingDefinitions {
             // Normalize and merge machine records into definitions (but do not perform any DOM or Phaser operations)
             for (const m of machines) {
                 const id = String(m.id);
+                const textureKey = m.defKey ? `machine-${m.defKey}` : `machine-${id}`;
                 const defObj = Object.assign({
                     name: m.name || ('Machine ' + id),
                     image: m.image || null,
+                    textureKey: textureKey,
                     category: 'process',
                     footprint: m.footprint || [2, 2],
                     permanent: !!m.permanent,

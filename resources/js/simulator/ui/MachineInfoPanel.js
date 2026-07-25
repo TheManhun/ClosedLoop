@@ -104,10 +104,31 @@ export default class MachineInfoPanel {
         meta.innerHTML = '<strong>Category:</strong> ' + (categoryDisplay(normalized.category) || '—');
         panel.appendChild(meta);
 
-        const pw = document.createElement('div');
-        pw.style.marginBottom = '8px';
-        pw.innerHTML = '<strong>Power required:</strong> ' + (normalized.power_required ?? '—') + '<br/><strong>Water required:</strong> ' + (normalized.water_required ?? '—');
-        panel.appendChild(pw);
+        // If this is an external boundary (externalGrid), show special electrical info
+        if (normalized.type === 'boundary' || (normalized.defKey && normalized.defKey === 'externalGrid')) {
+            const stat = document.createElement('div'); stat.style.marginBottom = '8px';
+            const status = (record && record.status) ? record.status : (normalized.status || '—');
+            const flow = (record && typeof record.flow === 'number') ? record.flow : (normalized.flow ?? 0);
+            const dir = flow === 0 ? 'Idle' : (flow < 0 ? 'Importing' : 'Exporting');
+            stat.innerHTML = '<strong>Status:</strong> ' + status + '<br/>' +
+                             '<strong>Direction:</strong> ' + dir + '<br/>' +
+                             '<strong>Flow:</strong> ' + String(flow) + ' kW';
+            panel.appendChild(stat);
+
+            const caps = document.createElement('div'); caps.style.marginBottom = '8px';
+            caps.innerHTML = '<strong>Import capacity:</strong> ' + (normalized.importCapacity ?? '—') + '<br/>' +
+                             '<strong>Export capacity:</strong> ' + (normalized.exportCapacity ?? '—');
+            panel.appendChild(caps);
+
+            const rates = document.createElement('div'); rates.style.marginBottom = '8px';
+            rates.innerHTML = '<strong>Import cost:</strong> ' + (normalized.importCost ?? '—') + '<br/>' +
+                              '<strong>Export rate:</strong> ' + (normalized.exportRate ?? '—');
+            panel.appendChild(rates);
+
+            // Do not show normal machine inputs/outputs
+            panel.style.display = 'block';
+            return;
+        }
 
         const resources = Array.isArray(normalized.resources) ? normalized.resources : [];
         const inputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'input');
