@@ -135,8 +135,8 @@ export default class BuildingManager {
         if (typeof this.scene._updateMachineStatusVisual === 'function') this.scene._updateMachineStatusVisual(record);
 
         // If external grid, request cable update/creation
-        if (record.isExternalGrid && typeof this.scene._updateCablesForRecord === 'function') {
-            try { this.scene._updateCablesForRecord(record); } catch (e) { console.warn('Update cables failed', e); }
+        if (record.isExternalGrid && this.scene._connectionManager && typeof this.scene._connectionManager.updateConnectionsForRecord === 'function') {
+            try { this.scene._connectionManager.updateConnectionsForRecord(record); } catch (e) { console.warn('Update connections failed', e); }
         }
 
         return record;
@@ -172,7 +172,7 @@ export default class BuildingManager {
         record.container.x = destIx * this.grid.config.minor;
         record.container.y = destIy * this.grid.config.minor;
 
-        if (typeof this.scene._updateCablesForRecord === 'function') this.scene._updateCablesForRecord(record);
+        if (this.scene._connectionManager && typeof this.scene._connectionManager.updateConnectionsForRecord === 'function') this.scene._connectionManager.updateConnectionsForRecord(record);
 
         return true;
     }
@@ -183,8 +183,8 @@ export default class BuildingManager {
         const fw = def.footprint[0];
         const fh = def.footprint[1];
 
-        // Remove cables if any
-        if (typeof this.scene._removeCablesForRecord === 'function') this.scene._removeCablesForRecord(record);
+        // Remove connections if any
+        if (this.scene._connectionManager && typeof this.scene._connectionManager.removeConnectionsForRecord === 'function') this.scene._connectionManager.removeConnectionsForRecord(record);
 
         // clear occupancy
         for (let dx = 0; dx < fw; dx++) {

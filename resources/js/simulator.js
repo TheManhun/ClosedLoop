@@ -532,6 +532,56 @@ class PrototypeScene extends Phaser.Scene {
                             container.appendChild(section);
                         });
 
+                            // Add Connections category (power cables, conveyors, etc.)
+                            try {
+                                const connDefs = ConnectionDefinitions || {};
+                                const connSection = document.createElement('div');
+                                connSection.className = 'toolbox-category';
+                                const connHeader = document.createElement('div');
+                                connHeader.className = 'toolbox-category-header';
+                                connHeader.style.display = 'flex';
+                                connHeader.style.justifyContent = 'space-between';
+                                connHeader.style.alignItems = 'center';
+                                connHeader.style.padding = '6px 4px';
+                                connHeader.style.cursor = 'pointer';
+                                const connTitle = document.createElement('div');
+                                const connTitleName = document.createElement('span'); connTitleName.className = 'toolbox-category-title'; connTitleName.textContent = 'Connections';
+                                const connTitleCount = document.createElement('span'); connTitleCount.className = 'toolbox-category-count'; connTitleCount.textContent = ' (' + Object.keys(connDefs).length + ')';
+                                connTitle.appendChild(connTitleName); connTitle.appendChild(connTitleCount);
+                                connTitle.style.fontWeight = '700'; connTitle.style.fontSize = '13px';
+                                const connCollapse = document.createElement('button'); connCollapse.textContent = '▾'; connCollapse.setAttribute('aria-expanded','true'); connCollapse.style.background='transparent'; connCollapse.style.border='0'; connCollapse.style.color='#9ca3af'; connCollapse.style.cursor='pointer'; connCollapse.className='toolbox-collapse-btn';
+                                connHeader.appendChild(connTitle); connHeader.appendChild(connCollapse);
+                                const connList = document.createElement('div'); connList.className = 'toolbox-category-list'; connList.style.display = 'flex'; connList.style.flexDirection = 'column'; connList.style.gap = '8px'; connList.style.padding = '6px 4px 12px 4px';
+
+                                Object.keys(connDefs).forEach(k => {
+                                    const d = connDefs[k];
+                                    const ccard = document.createElement('div'); ccard.className = 'toolbox-card'; ccard.style.display='flex'; ccard.style.alignItems='center'; ccard.style.gap='12px'; ccard.style.padding='10px'; ccard.style.borderRadius='8px'; ccard.style.cursor='pointer'; ccard.style.wordBreak='break-word';
+                                    if (!d || d.enabled === false) ccard.classList.add('disabled');
+                                    const iconWrap = document.createElement('div'); iconWrap.className='toolbox-card-icon'; iconWrap.style.width='56px'; iconWrap.style.height='56px'; iconWrap.style.display='flex'; iconWrap.style.alignItems='center'; iconWrap.style.justifyContent='center'; iconWrap.style.background='#0d0f10'; iconWrap.style.borderRadius='6px';
+                                    const icon = document.createElement('div'); icon.textContent = d && d.key === 'power' ? '⚡' : (d && d.key === 'conveyor' ? '▤' : (d && d.key === 'water' ? '💧' : '🔗')); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
+                                    const txt = document.createElement('div'); txt.style.flex='1'; txt.style.minWidth='0'; const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = (d && d.label) || (d && d.key) || k; const sub = document.createElement('div'); sub.className='toolbox-card-category'; sub.textContent = (d && d.renderer) || (d && d.comingSoon ? 'Coming soon' : 'Connection'); txt.appendChild(nm); txt.appendChild(sub);
+                                    ccard.appendChild(iconWrap); ccard.appendChild(txt);
+
+                                    ccard.addEventListener('click', (ev) => {
+                                        ev.preventDefault();
+                                        try { if (!d || d.enabled === false) return; } catch(e){}
+                                        // Cancel placement mode if active
+                                        try { if (fetchScene._placementController && fetchScene._placementController.isPlacing()) fetchScene._placementController.cancelPlacement(); } catch(e){}
+                                        // Begin connection via ConnectionController
+                                        try { if (fetchScene._connectionController) fetchScene._connectionController.beginConnection(d.key, d); } catch(e){}
+                                        // Visual selection state for toolbox cards
+                                        try { document.querySelectorAll('.toolbox-card.selected').forEach(c=>c.classList.remove('selected')); ccard.classList.add('selected');
+                                            const watcher = setInterval(()=>{ try { if (!fetchScene._connectionController || typeof fetchScene._connection_controller !== 'function' || !fetchScene._connectionController.isConnecting()) { ccard.classList.remove('selected'); clearInterval(watcher); } } catch(e){ ccard.classList.remove('selected'); clearInterval(watcher);} }, 200);
+                                        } catch(e){}
+                                    });
+
+                                    connList.appendChild(ccard);
+                                });
+
+                                connHeader.addEventListener('click', ()=>{ const expanded = connList.style.display !== 'none'; connList.style.display = expanded ? 'none' : 'flex'; connCollapse.textContent = expanded ? '▸' : '▾'; connCollapse.setAttribute('aria-expanded', String(!expanded)); });
+                                connSection.appendChild(connHeader); connSection.appendChild(connList); container.appendChild(connSection);
+                            } catch(e) { /* ignore */ }
+
                         // Search filter
                         search.addEventListener('input', (e) => {
                             const q = (e.target.value || '').toLowerCase().trim();
