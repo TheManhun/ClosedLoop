@@ -6,6 +6,7 @@ import BuildingDefinitions from './simulator/data/BuildingDefinitions.js';
 import BuildingManager from './simulator/managers/BuildingManager.js';
 import InputHandler from './simulator/core/InputHandler.js';
 import MachineInfoPanel from './simulator/ui/MachineInfoPanel.js';
+import ContextMenu from './simulator/ui/ContextMenu.js';
 
 class PrototypeScene extends Phaser.Scene {
     constructor() {
@@ -513,164 +514,35 @@ class PrototypeScene extends Phaser.Scene {
             // ensure Escape handling does not toggle this control; no extra Escape logic needed here
         }
 
-        // Context menu implementation
+        // Context menu responsibilities extracted to ContextMenu class
         const scene = this;
-        // Create context menu element
-        function createContextMenu() {
-            const el = document.createElement('div');
-            el.id = 'simulator-context-menu';
-            el.style.position = 'absolute';
-            el.style.background = '#0b1220';
-            el.style.color = '#fff';
-            el.style.border = '1px solid rgba(255,255,255,0.08)';
-            el.style.padding = '8px';
-            el.style.zIndex = 10000;
-            el.style.minWidth = '160px';
-            el.style.display = 'none';
-            el.style.fontSize = '13px';
-            el.style.boxShadow = '0 6px 18px rgba(2,6,23,0.7)';
-            document.body.appendChild(el);
-            return el;
-        }
-
-        if (!document.getElementById('simulator-context-menu')) {
-            this._contextMenuEl = createContextMenu();
-        } else {
-            this._contextMenuEl = document.getElementById('simulator-context-menu');
-        }
-
-        function hideContextMenu() {
-            if (scene._contextMenuEl) scene._contextMenuEl.style.display = 'none';
-        }
-
-        // Expose for CameraController to call when a camera drag starts
-        scene.hideContextMenu = hideContextMenu;
-
-        function clampMenuPosition(x, y, menuEl) {
-            const root = document.getElementById('simulator-root');
-            if (!root) return { x, y };
-            const rect = root.getBoundingClientRect();
-            const menuRect = menuEl.getBoundingClientRect();
-            let left = x;
-            let top = y;
-            if (left + menuRect.width > rect.right) {
-                left = Math.max(rect.left, rect.right - menuRect.width - 8);
-            }
-            if (top + menuRect.height > rect.bottom) {
-                top = Math.max(rect.top, rect.bottom - menuRect.height - 8);
-            }
-            // ensure within viewport too
-            left = Math.max(8, left);
-            top = Math.max(8, top);
-            return { x: left, y: top };
-        }
 
         function handleSuggestedMachine(defKey) {
             console.log('Suggested machine clicked:', defKey);
             // placeholder: future hook
         }
-
-        function showContextMenuFor(targetType, targetRecord, clientX, clientY) {
-            const el = scene._contextMenuEl;
-            el.innerHTML = '';
-            // Header / title
-            const title = document.createElement('div');
-            title.style.fontWeight = '600';
-            title.style.marginBottom = '6px';
-            if (targetRecord) {
-                title.textContent = targetRecord.type || targetRecord.defKey || 'Building';
-            } else {
-                title.textContent = '';
+        // Instantiate ContextMenu with callbacks into the scene
+        this._contextMenu = new ContextMenu({
+            onDelete: (rec) => { try { deleteBuilding(rec); } catch (e) { console.warn(e); } },
+            onInfo: (rec) => { try { scene.showMachineInfoFor(rec); } catch (e) {} },
+            onSuggested: (defKey) => { try { handleSuggestedMachine(defKey); } catch (e) {} },
+            onToggleToolbar: () => { if (toolbarEl) toggleToolbar(); },
+            isToolbarVisible: () => toolbarEl && toolbarEl.style.display !== 'none',
+            onToggleStatus: () => { scene._sceneSettings.showMachineStatusColours = !scene._sceneSettings.showMachineStatusColours; if (typeof scene._recomputeMachineStatuses === 'function') scene._recomputeMachineStatuses(); },
+            isStatusOn: () => scene._sceneSettings.showMachineStatusColours,
+            onRotate: null,
+            onUpgrade: null,
+            onShowForRecord: (rec) => {
+                // keep selection visible when menu opens
+                if (rec) { scene._selectedCell = { ix: rec.gridX, iy: rec.gridY }; scene._drawSelection(); }
             }
-            if (title.textContent) el.appendChild(title);
+        });
 
-            // Suggested next machines (driven by definition metadata)
-            if (targetRecord && Array.isArray(targetRecord.suggestedNext) && targetRecord.suggestedNext.length > 0) {
-                const sugLabel = document.createElement('div');
-                sugLabel.style.marginBottom = '6px';
-                sugLabel.textContent = 'Suggested Next Machine';
-                el.appendChild(sugLabel);
-                for (const s of targetRecord.suggestedNext) {
-                    const btn = document.createElement('button');
-                    btn.textContent = s.name || s.defKey || 'Suggested';
-                    btn.style.display = 'block';
-                    btn.style.width = '100%';
-                    btn.style.marginBottom = '6px';
-                    btn.onclick = () => handleSuggestedMachine(s.defKey);
-                    el.appendChild(btn);
-                }
-            } else if (targetType === 'building') {
-                const sugLabel = document.createElement('div');
-                sugLabel.style.marginBottom = '6px';
-                sugLabel.textContent = 'Suggested Next Machine';
-                el.appendChild(sugLabel);
-                const coming = document.createElement('div');
-                coming.textContent = 'Coming Soon';
-                coming.style.marginBottom = '6px';
-                el.appendChild(coming);
-            }
-
-            // Delete option for deletable buildings (not for municipalWaste)
-            if (targetRecord && targetRecord.deletable) {
-                const delBtn = document.createElement('button');
-                delBtn.textContent = 'Delete Building';
-                delBtn.style.display = 'block';
-                delBtn.style.width = '100%';
-                delBtn.style.margin = '6px 0';
-                delBtn.onclick = () => {
-                    deleteBuilding(targetRecord);
-                    hideContextMenu();
-                };
-                el.appendChild(delBtn);
-            }
-
-            // Toolbar toggle
-            const toolbarBtn = document.createElement('button');
-            const toolbarVisible = toolbarEl && toolbarEl.style.display !== 'none';
-            toolbarBtn.textContent = toolbarVisible ? 'Hide Toolbar' : 'Show Toolbar';
-            toolbarBtn.onclick = () => {
-                if (toolbarVisible) hideToolbar(); else showToolbar();
-                hideContextMenu();
-            };
-            el.appendChild(toolbarBtn);
-
-            // Machine Status Colours toggle (global)
-            const statusBtn = document.createElement('button');
-            statusBtn.textContent = scene._sceneSettings.showMachineStatusColours ? 'Machine Status Colours: On' : 'Machine Status Colours: Off';
-            statusBtn.style.display = 'block';
-            statusBtn.style.width = '100%';
-            statusBtn.style.margin = '6px 0';
-            statusBtn.onclick = () => {
-                scene._sceneSettings.showMachineStatusColours = !scene._sceneSettings.showMachineStatusColours;
-                statusBtn.textContent = scene._sceneSettings.showMachineStatusColours ? 'Machine Status Colours: On' : 'Machine Status Colours: Off';
-                // Update visuals for all machines without changing their status
-                if (typeof scene._recomputeMachineStatuses === 'function') scene._recomputeMachineStatuses();
-                hideContextMenu();
-            };
-            el.appendChild(statusBtn);
-
-            // Ensure labels/selection update when menu is shown for a record
-                if (targetRecord) {
-                scene._selectedCell = { ix: targetRecord.gridX, iy: targetRecord.gridY };
-                scene._drawSelection();
-                // Also show machine info for this record when context menu opens
-                try { scene.showMachineInfoFor(targetRecord); } catch (e) { /* ignore */ }
-            }
-
-            // Position and show
-            el.style.display = 'block';
-            // allow DOM to measure
-            requestAnimationFrame(() => {
-                const pos = clampMenuPosition(clientX, clientY, el);
-                el.style.left = pos.x + 'px';
-                el.style.top = pos.y + 'px';
-            });
-        }
-
-        // Expose context/menu helpers for InputHandler to call
-        scene.showContextMenuFor = showContextMenuFor;
-
-        // Context menu handling moved to InputHandler
+        // Expose thin wrappers expected by InputHandler and CameraController
+        scene.showContextMenuFor = function (targetType, targetRecord, clientX, clientY) {
+            try { scene._contextMenu.show(targetRecord, clientX, clientY); } catch (e) { console.warn(e); }
+        };
+        scene.hideContextMenu = function () { try { scene._contextMenu.hide(); } catch (e) {} };
 
         // Shared delete function
         function deleteBuilding(record) {
