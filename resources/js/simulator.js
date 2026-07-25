@@ -74,17 +74,21 @@ class PrototypeScene extends Phaser.Scene {
         };
         this._hoverCell = null; // { ix, iy }
         this._selectedCell = null; // { ix, iy }
-        // Buildings placed in the scene keyed by "x,y"
-        this._buildings = new Map();
-        this._nextBuildingId = 1;
+        // Building state managed by BuildingManager
+        // Keep compatibility placeholders used by older code paths
+        this._buildings = null; // replaced by BuildingManager
+        this._nextBuildingId = null;
         // Building definitions handled by BuildingDefinitions (keeps defaults and loads API machines)
         this._buildingDefinitions = new BuildingDefinitions();
         // Expose a compatibility object used by the rest of the scene
         this._buildingDefs = this._buildingDefinitions.getAll();
 
+        // BuildingManager will be created after definitions are initialized
+        this._buildingManager = null;
+
         const fetchScene = this;
         // Fire-and-forget: load remote machines and augment definitions; toolbar DOM rendering remains in simulator.js
-        this._buildingDefinitions.init().then((machines) => {
+        this._buildingDefinitions.init().then(async (machines) => {
             try {
                 if (!Array.isArray(machines) || machines.length === 0) return;
 
@@ -164,6 +168,18 @@ class PrototypeScene extends Phaser.Scene {
                         toolbarEl.appendChild(btn);
                     }
                 });
+                // Instantiate BuildingManager now that definitions are available
+                try {
+                    // Lazy import to avoid circular ordering issues in some bundlers
+                    // eslint-disable-next-line import/no-unresolved
+                    const { default: BuildingManager } = await import('./simulator/managers/BuildingManager.js');
+                    fetchScene._buildingManager = new BuildingManager(fetchScene, fetchScene._gridSystem, fetchScene._buildingDefinitions, fetchScene._eventBus);
+                    // maintain compatibility pointers used throughout the scene
+                    fetchScene._buildings = fetchScene._buildingManager._occupancy;
+                    fetchScene._nextBuildingId = fetchScene._buildingManager._nextId;
+                } catch (e) {
+                    console.warn('Failed to initialize BuildingManager:', e);
+                }
             } catch (err) {
                 console.error('Failed to load machines from API:', err);
                 let msgEl = document.getElementById('simulator-api-error');
@@ -271,8 +287,16 @@ class PrototypeScene extends Phaser.Scene {
                         }
                         if (anyOccupied) break;
                     }
-                    if (!anyOccupied) {
-                        this._placeBuilding(ix, iy, defKey);
+                        if (!anyOccupied) {
+                            // delegate to BuildingManager if available
+                            if (this._buildingManager) {
+                                this._buildingManager.placeMachine(ix, iy, defKey);
+                                // keep scene-level selection compatibility
+                                this._buildings = this._buildingManager._occupancy;
+                                this._nextBuildingId = this._buildingManager._nextId;
+                            } else {
+                                this._placeBuilding(ix, iy, defKey);
+                            }
                         // After placing exactly one building, exit placement mode and clear preview
                         this._placementMode = false;
                         this._placementDefKey = null;
@@ -847,14 +871,14 @@ class PrototypeScene extends Phaser.Scene {
                 for (const p of placements) {
                     // skip if a building of this defKey already exists
                     let exists = false;
-                    for (const rec of this._buildings.values()) {
+                    for (const rec of (this._buildingManager ? this._buildingManager.getPlacedMachines() : this._buildings.values())) {
                         if (rec && rec.defKey === p.key) { exists = true; break; }
                     }
                     if (exists) continue;
 
                     const def = this._buildingDefs[p.key];
                     if (!def) continue;
-                    const rec = this._placeBuilding(p.ix, p.iy, p.key);
+                    const rec = (this._buildingManager ? this._buildingManager.placeMachine(p.ix, p.iy, p.key) : this._placeBuilding(p.ix, p.iy, p.key));
                     if (rec) {
                         rec.permanent = def.permanent === true;
                         rec.deletable = def.deletable !== false;
@@ -865,7 +889,7 @@ class PrototypeScene extends Phaser.Scene {
                 this._initialSourcesPlaced = true;
                 // Place External Grid and a demo Process Unit and connect them with a power cable for the initial demo
                 try {
-                    const gridRec = this._placeBuilding(startIx + 22, startIy + 0, 'externalGrid');
+                    const gridRec = (this._buildingManager ? this._buildingManager.placeMachine(startIx + 22, startIy + 0, 'externalGrid') : this._placeBuilding(startIx + 22, startIy + 0, 'externalGrid'));
                     if (gridRec) { gridRec.permanent = true; gridRec.deletable = false; gridRec.movable = true; }
                     // Do not place demo process unit on load — only show external substation
                     if (typeof this._recomputeMachineStatuses === 'function') this._recomputeMachineStatuses();
