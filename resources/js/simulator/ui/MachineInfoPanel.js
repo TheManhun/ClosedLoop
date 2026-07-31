@@ -42,6 +42,7 @@ export default class MachineInfoPanel {
             agriculture: '🌿 Agriculture',
             process: '⚙ Processing',
             infrastructure: '⚡ Energy',
+            'electrical infrastructure': '⚡ Electrical Infrastructure',
             manufacturing: '🏭 Manufacturing',
             recycling: '♻ Recycling',
             water: '💧 Water',
@@ -103,6 +104,30 @@ export default class MachineInfoPanel {
         meta.style.marginBottom = '8px';
         meta.innerHTML = '<strong>Category:</strong> ' + (categoryDisplay(normalized.category) || '—');
         panel.appendChild(meta);
+
+        if (normalized.defKey === 'distributionBoard' || normalized.type === 'power_distribution') {
+            const boardInfo = document.createElement('div'); boardInfo.style.marginBottom = '8px';
+            const ratedCapacity = Number(record && record.ratedCapacity != null ? record.ratedCapacity : (normalized.ratedCapacity ?? 20));
+            const currentLoad = Number(record && record.currentLoad != null ? record.currentLoad : 0);
+            const remainingCapacity = Number(record && record.remainingCapacity != null ? record.remainingCapacity : Math.max(0, ratedCapacity - currentLoad));
+            const inputConnections = Array.isArray(record && record.connections) ? record.connections.filter((conn) => conn && conn.type === 'power' && conn.toMachineId === record.id).length : 0;
+            const outputConnections = Array.isArray(record && record.connections) ? record.connections.filter((conn) => conn && conn.type === 'power' && conn.fromMachineId === record.id).length : 0;
+            const inputsUsed = Number(record && record.inputConnectionCount != null ? record.inputConnectionCount : inputConnections);
+            const outputsUsed = Number(record && record.outputConnectionCount != null ? record.outputConnectionCount : outputConnections);
+            const statusText = record && record.overloaded ? 'Overloaded' : (currentLoad >= ratedCapacity ? 'At capacity' : (currentLoad > 0 || (record && record.incomingAvailablePower > 0) ? 'Active' : 'Offline'));
+            boardInfo.innerHTML = '<strong>Rated capacity:</strong> ' + String(ratedCapacity) + ' MW<br/>' +
+                '<strong>Current load:</strong> ' + String(currentLoad.toFixed(1)) + ' MW<br/>' +
+                '<strong>Remaining capacity:</strong> ' + String(remainingCapacity.toFixed(1)) + ' MW<br/>' +
+                '<strong>Inputs used:</strong> ' + String(inputsUsed) + '/1<br/>' +
+                '<strong>Outputs used:</strong> ' + String(outputsUsed) + '/4<br/>' +
+                '<strong>Status:</strong> ' + statusText;
+            panel.appendChild(boardInfo);
+            if (record && record.overloaded) {
+                const warning = document.createElement('div'); warning.style.marginTop = '6px'; warning.style.color = '#fca5a5'; warning.textContent = 'Distribution Board overload warning: connected demand exceeds rated capacity.'; panel.appendChild(warning);
+            }
+            panel.style.display = 'block';
+            return;
+        }
 
         // If this is an external boundary (externalGrid), show special electrical info
         if (normalized.type === 'boundary' || (normalized.defKey && normalized.defKey === 'externalGrid')) {

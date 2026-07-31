@@ -36,6 +36,8 @@ class PrototypeScene extends Phaser.Scene {
         this.load.image('src_sw', '/sewerage_waste.png');
         // External grid / substation
         this.load.image('external_grid', '/electricsubstation.png');
+        // Distribution board
+        this.load.image('distribution_board', '/Distribution_Board.png');
     }
 
     create() {
@@ -149,11 +151,33 @@ class PrototypeScene extends Phaser.Scene {
                 }
                 // group
                 const groups = {};
-                machines.forEach(m => { const cat = (m.category||'other').toString(); groups[cat]=groups[cat]||[]; groups[cat].push(m); });
+                const builtInMachines = [
+                    {
+                        id: 'distributionBoard',
+                        defKey: 'distributionBoard',
+                        name: 'Distribution Board',
+                        category: 'infrastructure',
+                        description: 'Receives electrical power and distributes it to up to four connected machines.',
+                        image: 'Distribution_Board.png',
+                        powerRequired: 0,
+                        powerProduced: 0,
+                        footprint: [3, 2],
+                        placeable: true
+                    }
+                ];
+                const repoMachines = Array.isArray(machines) ? machines : [];
+                const toolboxMachines = [...repoMachines, ...builtInMachines];
+                if (toolboxMachines.length === 0) return;
+                toolboxMachines.forEach((m) => {
+                    const cat = (m.category || 'other').toString();
+                    groups[cat] = groups[cat] || [];
+                    groups[cat].push(m);
+                });
                 const categoryDisplay = (c)=>{ const map={
                     agriculture: '🌿 Agriculture',
                     process: '⚙ Processing',
                     infrastructure: '⚡ Energy',
+                    'electrical infrastructure': '⚡ Electrical Infrastructure',
                     manufacturing: '🏭 Manufacturing',
                     recycling: '♻ Recycling',
                     water: '💧 Water',
@@ -1299,13 +1323,58 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
     const placed = Array.isArray(this._buildingManager && this._buildingManager.getPlacedMachines) ? this._buildingManager.getPlacedMachines() : [];
     let totalDemand = 0;
     let totalGeneration = 0;
+    const boardRecords = [];
 
     for (const record of placed) {
         if (!record || !record.id) continue;
         if (record.defKey === 'externalGrid' || record.isExternalGrid || record.type === 'boundary') continue;
+        if (record.defKey === 'distributionBoard' || record.type === 'power_distribution') {
+            boardRecords.push(record);
+            continue;
+        }
         if (!this._isMachinePowerActive(record)) continue;
         totalDemand += this._readNumericPowerValue(record, ['powerRequired', 'powerDemand', 'powerUsage', 'electricityRequired', 'powerConsumption']);
         totalGeneration += this._readNumericPowerValue(record, ['powerProduced', 'powerGeneration', 'powerGenerated', 'electricityProduced']);
+    }
+
+    for (const board of boardRecords) {
+        const connections = Array.isArray(board.connections) ? board.connections : [];
+        const incomingSources = connections.filter((conn) => conn && conn.type === 'power' && conn.targetBuildingId === board.id).map((conn) => this._buildingManager.getMachine(conn.sourceBuildingId)).filter(Boolean);
+        const downstreamTargets = connections.filter((conn) => conn && conn.type === 'power' && conn.sourceBuildingId === board.id).map((conn) => this._buildingManager.getMachine(conn.targetBuildingId)).filter(Boolean);
+        const incomingAvailablePower = incomingSources.reduce((sum, source) => {
+            if (!source) return sum;
+            const sourceDef = this._buildingDefs[source.defKey] || this._buildingDefs[source.type] || {};
+            const sourceProvidesPower = Array.isArray(sourceDef.provides) && sourceDef.provides.includes('power');
+            if (!sourceProvidesPower) return sum;
+            const sourcePower = this._readNumericPowerValue(source, ['powerProduced', 'powerGeneration', 'powerGenerated', 'electricityProduced', 'exportCapacity', 'capacity']);
+            return sum + (Number.isFinite(sourcePower) ? sourcePower : 0);
+        }, 0);
+        const connectedDemand = downstreamTargets.reduce((sum, target) => {
+            if (!target) return sum;
+            const demand = this._readNumericPowerValue(target, ['powerRequired', 'powerDemand', 'powerUsage', 'electricityRequired', 'powerConsumption']);
+            return sum + (Number.isFinite(demand) ? demand : 0);
+        }, 0);
+        const load = Math.min(connectedDemand, board.ratedCapacity || 20);
+        const remaining = Math.max(0, (board.ratedCapacity || 20) - load);
+        board.incomingAvailablePower = incomingAvailablePower;
+        board.connectedDemand = connectedDemand;
+        board.currentLoad = load;
+        board.remainingCapacity = remaining;
+        board.overloaded = connectedDemand > (board.ratedCapacity || 20);
+        board.powerStatus = board.overloaded ? 'Overloaded' : (incomingAvailablePower > 0 || load > 0 ? 'Active' : 'Offline');
+        if (board.overloaded) {
+            board.status = 'fault';
+        } else if (board.currentLoad > 0) {
+            board.status = 'working';
+        } else {
+            board.status = 'neutral';
+        }
+        this._updateMachineStatusVisual(board);
+        if (board.overloaded) {
+            try { board.container.setTint(0xff7777); } catch (e) {}
+        } else {
+            try { board.container.clearTint && board.container.clearTint(); } catch (e) {}
+        }
     }
 
     const gridImport = Math.max(0, totalDemand - totalGeneration);

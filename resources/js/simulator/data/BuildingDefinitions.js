@@ -113,7 +113,7 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: true,
                 accepts: ['power'],
-                provides: [],
+                provides: ['power'],
                 suggestedNext: []
             },
             sortingFacility: {
@@ -127,6 +127,27 @@ export default class BuildingDefinitions {
                 placeable: true,
                 accepts: ['power', 'conveyor'],
                 provides: ['conveyor'],
+                suggestedNext: []
+            },
+            distributionBoard: {
+                name: 'Distribution Board',
+                image: 'Distribution_Board.png',
+                textureKey: 'distribution_board',
+                category: 'Electrical Infrastructure',
+                type: 'power_distribution',
+                footprint: [3, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                placeable: true,
+                accepts: ['power'],
+                provides: ['power'],
+                generatesPower: false,
+                consumesPower: false,
+                ratedCapacity: 20,
+                maxInputConnections: 1,
+                maxOutputConnections: 4,
+                description: 'Receives electrical power and distributes it to up to four connected machines.',
                 suggestedNext: []
             },
             externalGrid: {
@@ -173,11 +194,15 @@ export default class BuildingDefinitions {
                 const baseDef = this._defs[id] || this._defs[m.defKey] || {};
                 const powerValue = Number(m.powerRequired ?? m.powerUsage ?? m.electricityRequired ?? m.powerConsumption ?? 0);
                 const needsPower = Number.isFinite(powerValue) && powerValue > 0;
+                const producesPower = Number.isFinite(Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0)) && Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0) > 0;
                 const accepts = Array.isArray(baseDef.accepts) ? baseDef.accepts.slice() : [];
                 const provides = Array.isArray(baseDef.provides) ? baseDef.provides.slice() : [];
 
                 if (needsPower && !accepts.includes('power')) {
                     accepts.push('power');
+                }
+                if (producesPower && !provides.includes('power')) {
+                    provides.push('power');
                 }
 
                 const defObj = Object.assign({}, baseDef, {

@@ -81,6 +81,23 @@ export default class InputHandler {
             return;
         }
 
+        // Connection mode delegated to ConnectionController when active
+        if (this.scene._connectionController && this.scene._connectionController.isConnecting()) {
+            try { this.scene._connectionController.handlePointerDown(pointer); } catch (e) { /* ignore */ }
+            return;
+        }
+
+        // Not placing: check for connection click first
+        if (this.scene._connectionManager && typeof this.scene._connectionManager.getConnectionAtPoint === 'function') {
+            const connection = this.scene._connectionManager.getConnectionAtPoint(world.x, world.y);
+            if (connection) {
+                this.scene._selectedConnectionId = connection.id;
+                this.scene._selectedCell = null;
+                if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
+                return;
+            }
+        }
+
         // Not placing: check for building click to start drag/select
         const record = this.buildingManager.getMachineAt(ix, iy);
         if (record) {
@@ -221,8 +238,12 @@ export default class InputHandler {
             this._dragState.isDragging = false;
             this._dragState.record = null;
         }
-          // If connection controller active, forward pointer up
-          try { if (this.scene._connectionController && this.scene._connectionController.isConnecting()) { this.scene._connectionController.handlePointerDown(pointer); } } catch (e) {}
+          // If connection controller active and a source has already been chosen, finish the connection on pointer up.
+          try {
+              if (this.scene._connectionController && this.scene._connectionController.isConnecting() && this.scene._connectionController._source) {
+                  this.scene._connectionController.handlePointerDown(pointer);
+              }
+          } catch (e) {}
     }
 
     _onKeyDown(ev) {
@@ -248,13 +269,22 @@ export default class InputHandler {
             } catch (e) {}
         }
 
-        // Delete / Backspace for selected building
-        if ((ev.key === 'Delete' || ev.key === 'Backspace') && this.scene._selectedCell) {
-            const rec = this.buildingManager.getMachineAt(this.scene._selectedCell.ix, this.scene._selectedCell.iy);
-            if (rec && rec.deletable) {
+        // Delete / Backspace for selected connection or building
+        if (ev.key === 'Delete' || ev.key === 'Backspace') {
+            if (this.scene._selectedConnectionId && this.scene._connectionManager && typeof this.scene._connectionManager.removeConnection === 'function') {
                 ev.preventDefault();
-                if (typeof this.scene.deleteBuilding === 'function') this.scene.deleteBuilding(rec);
+                this.scene._connectionManager.removeConnection(this.scene._selectedConnectionId);
+                this.scene._selectedConnectionId = null;
                 if (typeof this.scene.hideContextMenu === 'function') this.scene.hideContextMenu();
+                return;
+            }
+            if (this.scene._selectedCell) {
+                const rec = this.buildingManager.getMachineAt(this.scene._selectedCell.ix, this.scene._selectedCell.iy);
+                if (rec && rec.deletable) {
+                    ev.preventDefault();
+                    if (typeof this.scene.deleteBuilding === 'function') this.scene.deleteBuilding(rec);
+                    if (typeof this.scene.hideContextMenu === 'function') this.scene.hideContextMenu();
+                }
             }
         }
     }

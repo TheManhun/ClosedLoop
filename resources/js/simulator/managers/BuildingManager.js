@@ -83,8 +83,12 @@ export default class BuildingManager {
             const imgW = (src && src.width) || img.width || maxDisplayW;
             const imgH = (src && src.height) || img.height || maxDisplayH;
             const scale = Math.min(maxDisplayW / imgW, maxDisplayH / imgH);
-            if (isFinite(scale) && scale > 0) {
-                img.setScale(scale);
+            let finalScale = scale;
+            if (defKey === 'distributionBoard' || def.type === 'power_distribution') {
+                finalScale = (finalScale || 1) * 0.5;
+            }
+            if (isFinite(finalScale) && finalScale > 0) {
+                img.setScale(finalScale);
             } else {
                 img.setDisplaySize(maxDisplayW, maxDisplayH);
             }
@@ -92,6 +96,8 @@ export default class BuildingManager {
             img.setDisplaySize(maxDisplayW, maxDisplayH);
         }
         img.setOrigin(0.5, 0.5);
+        img.setOrigin(0.5, 0.5);
+        container.add(img);
         container.add(img);
 
         const record = {
@@ -120,6 +126,7 @@ export default class BuildingManager {
 
         // initialize status
         record.status = 'neutral';
+        record.connections = [];
         // External grid special metadata and temporary runtime values
         if (defKey === 'externalGrid') {
             record.isExternalGrid = true;
@@ -131,6 +138,18 @@ export default class BuildingManager {
             record.exportRate = def.exportRate || 0;
             // current signed flow (negative = import into facility)
             record.flow = 0; // temporary default — 0 idle
+        }
+        if (defKey === 'distributionBoard' || def.type === 'power_distribution') {
+            record.isDistributionBoard = true;
+            record.maxInputConnections = Number(def.maxInputConnections ?? 1);
+            record.maxOutputConnections = Number(def.maxOutputConnections ?? 4);
+            record.ratedCapacity = Number(def.ratedCapacity ?? 20);
+            record.incomingAvailablePower = 0;
+            record.connectedDemand = 0;
+            record.currentLoad = 0;
+            record.remainingCapacity = Number(def.ratedCapacity ?? 20);
+            record.overloaded = false;
+            record.powerStatus = 'Offline';
         }
         if (typeof this.scene._updateMachineStatusVisual === 'function') this.scene._updateMachineStatusVisual(record);
 

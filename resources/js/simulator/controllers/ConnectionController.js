@@ -129,11 +129,15 @@ export default class ConnectionController {
         const sourceProvides = Array.isArray(sourceDef.provides) ? sourceDef.provides : [];
         const targetAccepts = Array.isArray(targetDef.accepts) ? targetDef.accepts : [];
 
-        if (!sourceProvides.includes(connectionType)) {
+        const isPowerConnection = connectionType === 'power';
+        const sourceCanProvide = sourceProvides.includes(connectionType) || (isPowerConnection && (source.defKey === 'distributionBoard' || source.type === 'power_distribution' || source.defKey === 'externalGrid'));
+        const targetCanAccept = targetAccepts.includes(connectionType) || (isPowerConnection && (target.defKey === 'distributionBoard' || target.type === 'power_distribution' || target.defKey === 'processUnit' || target.defKey === 'sortingFacility'));
+
+        if (!sourceCanProvide) {
             return { valid: false, message: `${sourceDef.name || 'This object'} does not provide ${connectionType}.` };
         }
 
-        if (!targetAccepts.includes(connectionType)) {
+        if (!targetCanAccept) {
             const label = targetDef.name || 'This object';
             return { valid: false, message: `${label} does not accept ${connectionType}.` };
         }
@@ -147,6 +151,25 @@ export default class ConnectionController {
 
         if (existing) {
             return { valid: false, message: 'That connection already exists.' };
+        }
+
+        if (connectionType === 'power') {
+            const isSourceBoard = source.defKey === 'distributionBoard' || source.type === 'power_distribution';
+            const isTargetBoard = target.defKey === 'distributionBoard' || target.type === 'power_distribution';
+
+            if (isSourceBoard) {
+                const outputCount = this.connectionManager.getAll().filter((conn) => conn.type === 'power' && conn.fromMachineId === source.id).length;
+                if (outputCount >= (source.maxOutputConnections ?? 4)) {
+                    return { valid: false, message: 'Distribution Board has reached its maximum of 4 power outputs.' };
+                }
+            }
+
+            if (isTargetBoard) {
+                const inputCount = this.connectionManager.getAll().filter((conn) => conn.type === 'power' && conn.toMachineId === target.id).length;
+                if (inputCount >= (target.maxInputConnections ?? 1)) {
+                    return { valid: false, message: 'Distribution Board has reached its maximum of 1 power input.' };
+                }
+            }
         }
 
         return { valid: true, message: '' };
