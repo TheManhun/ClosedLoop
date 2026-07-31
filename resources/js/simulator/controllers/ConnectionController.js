@@ -53,8 +53,10 @@ export default class ConnectionController {
 
         // we have source, now select target
         const target = rec;
-        if (!this._isCompatibleTarget(this._source, target)) {
+        const validation = this._validateConnection(this._source, target);
+        if (!validation.valid) {
             this._flashRecord(target, 0xff0000);
+            this._showValidationMessage(validation.message);
             return;
         }
 
@@ -86,34 +88,81 @@ export default class ConnectionController {
     }
 
     _isCompatibleSource(rec) {
-        if (!rec) return false;
-        // connection definitions contain resource categories; choose compatibility by record.resourceId or def
-        // For power, allow externalGrid and any machine that can accept electricity (heuristic: category energy or def.resourceId==electricity)
-        if (!this._def) return false;
-        const categories = this._def.resourceCategories || [];
-        // Check building def for resourceId or category hints
+        if (!rec || !this._def) return false;
         const def = this.scene._buildingDefs[rec.defKey] || this.scene._buildingDefs[rec.type] || {};
-        if (def && def.resourceId && categories.includes(def.resourceId)) return true;
-        if (def && def.category && (def.category === 'energy' || def.category === 'infrastructure') && categories.includes('electricity')) return true;
-        // External grid special case
-        if (rec.defKey === 'externalGrid' && categories.includes('electricity')) return true;
-        // fallback: allow if rec has outputs/resources that match
-        return true;
+        const connectionType = this._def.key;
+        return Boolean(def && Array.isArray(def.provides) && def.provides.includes(connectionType));
     }
 
     _isCompatibleTarget(source, target) {
-        if (!source || !target) return false;
-        // Prevent self-connection
+        if (!source || !target || !this._def) return false;
         if (source === target) return false;
-        // For power, allow connecting to externalGrid or machines with energy category
-        if (!this._def) return false;
-        const categories = this._def.resourceCategories || [];
-        const defT = this.scene._buildingDefs[target.defKey] || {};
-        if (defT && defT.resourceId && categories.includes(defT.resourceId)) return true;
-        if (target.defKey === 'externalGrid' && categories.includes('electricity')) return true;
-        if (defT && defT.category && (defT.category === 'energy' || defT.category === 'infrastructure') && categories.includes('electricity')) return true;
-        // fallback allow
-        return true;
+        const connectionType = this._def.key;
+        const targetDef = this.scene._buildingDefs[target.defKey] || this.scene._buildingDefs[target.type] || {};
+        const accepts = Array.isArray(targetDef.accepts) ? targetDef.accepts : [];
+        return accepts.includes(connectionType);
+    }
+
+    _validateConnection(source, target) {
+        if (!source || !target || !this._def) {
+            return { valid: false, message: 'Connection cannot be created.' };
+        }
+        if (source === target) {
+            return { valid: false, message: 'A connection cannot link an object to itself.' };
+        }
+
+        const connectionType = this._def.key;
+        const sourceDef = this.scene._buildingDefs[source.defKey] || this.scene._buildingDefs[source.type] || {};
+        const targetDef = this.scene._buildingDefs[target.defKey] || this.scene._buildingDefs[target.type] || {};
+
+        const sourceProvides = Array.isArray(sourceDef.provides) ? sourceDef.provides : [];
+        const targetAccepts = Array.isArray(targetDef.accepts) ? targetDef.accepts : [];
+
+        if (!sourceProvides.includes(connectionType)) {
+            return { valid: false, message: `${sourceDef.name || 'This object'} does not provide ${connectionType}.` };
+        }
+
+        if (!targetAccepts.includes(connectionType)) {
+            const label = targetDef.name || 'This object';
+            return { valid: false, message: `${label} does not accept ${connectionType}.` };
+        }
+
+        const existing = this.connectionManager.getAll().some((conn) => {
+            const sameType = conn.type === connectionType;
+            const sameFrom = conn.fromMachineId === source.id && conn.toMachineId === target.id;
+            const sameTo = conn.fromMachineId === target.id && conn.toMachineId === source.id;
+            return sameType && (sameFrom || sameTo);
+        });
+
+        if (existing) {
+            return { valid: false, message: 'That connection already exists.' };
+        }
+
+        return { valid: true, message: '' };
+    }
+
+    _showValidationMessage(message) {
+        try {
+            const existing = document.getElementById('connection-validation-message');
+            if (existing) existing.remove();
+            const el = document.createElement('div');
+            el.id = 'connection-validation-message';
+            el.textContent = message;
+            el.style.position = 'fixed';
+            el.style.left = '50%';
+            el.style.bottom = '24px';
+            el.style.transform = 'translateX(-50%)';
+            el.style.background = 'rgba(15, 23, 42, 0.95)';
+            el.style.color = '#fff';
+            el.style.border = '1px solid rgba(255,255,255,0.12)';
+            el.style.padding = '10px 14px';
+            el.style.borderRadius = '999px';
+            el.style.zIndex = '13000';
+            el.style.fontSize = '13px';
+            el.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.2)';
+            document.body.appendChild(el);
+            setTimeout(() => { try { el.remove(); } catch (e) {} }, 1800);
+        } catch (e) {}
     }
 
     _flashRecord(rec, color) {

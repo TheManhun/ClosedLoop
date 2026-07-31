@@ -57,6 +57,28 @@ class PrototypeScene extends Phaser.Scene {
         // Do NOT reposition world objects on resize — camera will resize the viewport only.
         // Leave titleText at its initial world position.
 
+        const setToolboxState = (isExpanded) => {
+            const toolbox = document.getElementById('toolbox');
+            const toggle = document.getElementById('toolbox-toggle');
+            const simRoot = document.getElementById('simulator-root');
+            if (!toolbox || !toggle) return;
+
+            toolbox.classList.toggle('expanded', isExpanded);
+            document.body.classList.toggle('toolbox-is-expanded', isExpanded);
+            toggle.setAttribute('aria-expanded', String(isExpanded));
+            if (simRoot) {
+                simRoot.style.marginLeft = isExpanded ? '280px' : '56px';
+            }
+        };
+
+        const toolboxToggle = document.getElementById('toolbox-toggle');
+        if (toolboxToggle) {
+            toolboxToggle.addEventListener('click', () => {
+                const nextExpanded = !document.body.classList.contains('toolbox-is-expanded');
+                setToolboxState(nextExpanded);
+            });
+        }
+
         // CameraController encapsulates camera pan/zoom/reset behavior
         this._cameraController = new CameraController(this, { minZoom: 0.5, maxZoom: 2.0, zoomSensitivity: 0.0015 });
         // Keep compatibility reference used throughout the scene
@@ -248,7 +270,7 @@ class PrototypeScene extends Phaser.Scene {
                     connHeader.addEventListener('click', ()=>{ const expanded = connList.style.display !== 'none'; connList.style.display = expanded ? 'none' : 'flex'; connCollapse.textContent = expanded ? '▸' : '▾'; connCollapse.setAttribute('aria-expanded', String(!expanded)); });
                     connSection.appendChild(connHeader); connSection.appendChild(connList); container.appendChild(connSection);
                 } catch(e) {}
-                try { toolbox.classList.add('expanded'); document.body.classList.add('toolbox-is-expanded'); const tog = document.getElementById('toolbox-toggle'); if (tog) tog.setAttribute('aria-expanded','true'); toolbox.style.width='280px'; const simRoot=document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft='280px'; } catch(e){}
+                try { setToolboxState(true); } catch(e){}
                 search.addEventListener('input', (e)=>{ const q=(e.target.value||'').toLowerCase().trim(); container.querySelectorAll('.toolbox-card').forEach(card=>{ const name = (card.querySelector('div') && card.querySelector('div').innerText) || ''; card.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none'; }); });
             } catch (e) { /* ignore */ }
         })();
@@ -387,9 +409,7 @@ class PrototypeScene extends Phaser.Scene {
                         toolboxBody.appendChild(container);
                         // Expand toolbox by default for new UI (force styles in case other scripts manage state)
                         try {
-                            toolbox.classList.add('expanded');
-                            document.body.classList.add('toolbox-is-expanded');
-                            const tog = document.getElementById('toolbox-toggle'); if (tog) tog.setAttribute('aria-expanded', 'true');
+                            setToolboxState(true);
                             toolbox.style.width = '280px';
                             const simRoot = document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft = '280px';
                         } catch (e) {}

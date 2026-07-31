@@ -15,6 +15,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'MW',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             technologyWaste: {
@@ -27,6 +29,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'TW',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             scrapTyres: {
@@ -39,6 +43,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'ST',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             farmWaste: {
@@ -51,6 +57,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'FW',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             industrialWaste: {
@@ -63,6 +71,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'IW',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             buildingWaste: {
@@ -75,6 +85,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'BW',
+                provides: ['conveyor'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             sewerage: {
@@ -87,6 +99,8 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'SW',
+                provides: ['water'],
+                accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
             processUnit: {
@@ -98,6 +112,8 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
+                accepts: ['power'],
+                provides: [],
                 suggestedNext: []
             },
             sortingFacility: {
@@ -109,6 +125,8 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
+                accepts: ['power', 'conveyor'],
+                provides: ['conveyor'],
                 suggestedNext: []
             },
             externalGrid: {
@@ -117,6 +135,8 @@ export default class BuildingDefinitions {
                 category: 'energy',
                 type: 'boundary',
                 resourceId: 'electricity',
+                accepts: [],
+                provides: ['power'],
                 supportsImport: true,
                 supportsExport: true,
                 importCapacity: 1000,
@@ -150,18 +170,40 @@ export default class BuildingDefinitions {
             for (const m of machines) {
                 const id = String(m.id);
                 const textureKey = m.defKey ? `machine-${m.defKey}` : `machine-${id}`;
-                const defObj = Object.assign({
+                const baseDef = this._defs[id] || this._defs[m.defKey] || {};
+                const powerValue = Number(m.powerRequired ?? m.powerUsage ?? m.electricityRequired ?? m.powerConsumption ?? 0);
+                const needsPower = Number.isFinite(powerValue) && powerValue > 0;
+                const accepts = Array.isArray(baseDef.accepts) ? baseDef.accepts.slice() : [];
+                const provides = Array.isArray(baseDef.provides) ? baseDef.provides.slice() : [];
+
+                if (needsPower && !accepts.includes('power')) {
+                    accepts.push('power');
+                }
+
+                const defObj = Object.assign({}, baseDef, {
                     name: m.name || ('Machine ' + id),
                     image: m.image || null,
                     textureKey: textureKey,
-                    category: 'process',
+                    category: m.category || 'process',
                     footprint: m.footprint || [2, 2],
                     permanent: !!m.permanent,
                     deletable: m.deletable !== false,
                     movable: m.movable !== false,
                     placeable: m.placeable !== false,
-                    suggestedNext: []
-                }, this._defs[id] || {});
+                    suggestedNext: [],
+                    accepts,
+                    provides
+                });
+
+                // Preserve explicit capability arrays from the base definition; only add power when needed.
+                if (needsPower && !Array.isArray(defObj.accepts)) {
+                    defObj.accepts = ['power'];
+                } else if (needsPower && !defObj.accepts.includes('power')) {
+                    defObj.accepts = Array.from(new Set([...(defObj.accepts || []), 'power']));
+                }
+                if (!Array.isArray(defObj.provides)) {
+                    defObj.provides = [];
+                }
                 // Store under numeric id and also under defKey if provided, to keep compatibility
                 this._defs[id] = defObj;
                 if (m.defKey) {

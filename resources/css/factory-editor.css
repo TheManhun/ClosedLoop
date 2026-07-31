@@ -21,14 +21,17 @@ html,body{height:100%;}
   top: 34px;
   left: 0;
   bottom: 0;
-  width: 300px;
+  width: 56px;
   z-index: 11000;
   transition: width 180ms ease;
   background: #0d0f10; /* requested toolbox background */
   border-right: 1px solid rgba(57,255,136,0.45); /* fluorescent green border */
   display:flex;flex-direction:column;padding:10px 12px;box-shadow:4px 0 18px rgba(57,255,136,0.08);backdrop-filter: blur(4px);
+  overflow: hidden;
 }
-.toolbox.expanded, #toolbox.expanded{width:300px}
+.toolbox.expanded, body.toolbox-is-expanded #toolbox{width:280px}
+body:not(.toolbox-is-expanded) #toolbox .toolbox-body{display:none}
+body:not(.toolbox-is-expanded) #toolbox .toolbox-title{display:none}
 .toolbox-header{display:flex;align-items:center;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.04);position:relative;touch-action:none;-webkit-user-select:none;user-select:none}
 .toolbox-toggle{background:transparent;border:0;color:#9ca3af;font-size:18px;cursor:pointer;margin-right:8px}
 .toolbox-title{color:#ffffff;font-weight:700;margin-left:4px}
@@ -97,6 +100,13 @@ html,body{height:100%;}
 /* Toolbox open */
 body.toolbox-is-expanded #simulator-root {
   margin-left: 280px;
+}
+
+@media (max-width: 800px) {
+  body.toolbox-is-expanded #simulator-root {
+    margin-left: 0;
+    margin-bottom: 280px;
+  }
 }
 
 /* New toolbox card styles */
