@@ -96,8 +96,6 @@ export default class BuildingManager {
             img.setDisplaySize(maxDisplayW, maxDisplayH);
         }
         img.setOrigin(0.5, 0.5);
-        img.setOrigin(0.5, 0.5);
-        container.add(img);
         container.add(img);
 
         const record = {
