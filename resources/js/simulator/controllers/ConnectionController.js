@@ -14,7 +14,13 @@ export default class ConnectionController {
         this._defKey = defKey;
         this._def = def;
         this._source = null;
-        if (!this._previewGraphics) this._previewGraphics = this.scene.add.graphics();
+        if (!this._previewGraphics) {
+            this._previewGraphics = this.scene.add.graphics();
+        }
+        this._previewGraphics.clear();
+        this._previewGraphics.setVisible(true);
+        this._previewGraphics.disableInteractive && this._previewGraphics.disableInteractive();
+        if (this._previewGraphics.input) this._previewGraphics.input.enabled = false;
     }
 
     cancelConnection() {
@@ -22,7 +28,12 @@ export default class ConnectionController {
         this._defKey = null;
         this._def = null;
         this._source = null;
-        if (this._previewGraphics) { try { this._previewGraphics.clear(); } catch(e){} }
+        if (this._previewGraphics) {
+            try { this._previewGraphics.clear(); } catch(e){}
+            try { this._previewGraphics.setVisible(false); } catch(e){}
+            this._previewGraphics.disableInteractive && this._previewGraphics.disableInteractive();
+            if (this._previewGraphics.input) this._previewGraphics.input.enabled = false;
+        }
     }
 
     isConnecting() { return Boolean(this._connecting); }

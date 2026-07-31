@@ -37,7 +37,7 @@
                         <span>unresolved</span>
                     </div>
                 </div>
-                <!-- power indicator removed per simplified UI -->
+                <div id="power-balance-summary" class="power-balance-summary" aria-live="polite"></div>
 
                 <div class="unresolved-output-legend" id="unresolved-output-legend" aria-live="polite">
                     <!-- legend rows rendered by simulator.js -->

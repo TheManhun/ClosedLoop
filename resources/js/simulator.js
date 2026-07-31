@@ -1014,6 +1014,10 @@ class PrototypeScene extends Phaser.Scene {
         }
 
         update() {
+            if (this._connectionManager && typeof this._connectionManager.updateAnimations === 'function') {
+                this._connectionManager.updateAnimations(this.time.now, this.time.delta);
+            }
+
             // Force the first grid draw from the update loop until we have a valid rendered grid.
             if (!this._gridHasRendered) {
                 const drawn = this._drawGrid(true);
@@ -1266,6 +1270,83 @@ PrototypeScene.prototype._recomputeMachineStatuses = function () {
         }
         this._updateMachineStatusVisual(rec);
     }
+    this._refreshPowerBalance();
+};
+
+PrototypeScene.prototype._readNumericPowerValue = function (record, keys) {
+    if (!record) return 0;
+    for (const key of keys) {
+        const value = record[key];
+        if (value === undefined || value === null || value === '') continue;
+        const num = Number(value);
+        if (Number.isFinite(num)) return num;
+    }
+    return 0;
+};
+
+PrototypeScene.prototype._isMachinePowerActive = function (record) {
+    if (!record) return false;
+    if (record.active === false || record.isActive === false || record.enabled === false) return false;
+    if (record.status === 'inactive' || record.state === 'inactive') return false;
+    if (record.capacity !== undefined && record.capacity !== null && record.capacity !== '' && Number(record.capacity) <= 0) return false;
+    return true;
+};
+
+PrototypeScene.prototype._refreshPowerBalance = function () {
+    const container = document.getElementById('power-balance-summary');
+    if (!container) return;
+
+    const placed = Array.isArray(this._buildingManager && this._buildingManager.getPlacedMachines) ? this._buildingManager.getPlacedMachines() : [];
+    let totalDemand = 0;
+    let totalGeneration = 0;
+
+    for (const record of placed) {
+        if (!record || !record.id) continue;
+        if (record.defKey === 'externalGrid' || record.isExternalGrid || record.type === 'boundary') continue;
+        if (!this._isMachinePowerActive(record)) continue;
+        totalDemand += this._readNumericPowerValue(record, ['powerRequired', 'powerDemand', 'powerUsage', 'electricityRequired', 'powerConsumption']);
+        totalGeneration += this._readNumericPowerValue(record, ['powerProduced', 'powerGeneration', 'powerGenerated', 'electricityProduced']);
+    }
+
+    const gridImport = Math.max(0, totalDemand - totalGeneration);
+    const gridExport = Math.max(0, totalGeneration - totalDemand);
+    const netPower = totalGeneration - totalDemand;
+    const selfSufficiency = totalDemand > 0 ? (totalGeneration / totalDemand) * 100 : 100;
+
+    const formatValue = (value) => {
+        if (!Number.isFinite(value)) return '0';
+        return `${value.toFixed(value >= 100 ? 0 : 1)} MW`;
+    };
+
+    const formatPercent = (value) => {
+        if (!Number.isFinite(value)) return '0%';
+        return `${value.toFixed(0)}%`;
+    };
+
+    const maxBarValue = Math.max(1, totalGeneration, totalDemand);
+    const generationPct = Math.max(8, Math.min(100, (totalGeneration / maxBarValue) * 100));
+    const demandPct = Math.max(8, Math.min(100, (totalDemand / maxBarValue) * 100));
+    const statusLabel = netPower > 0 ? 'Surplus' : (netPower < 0 ? 'Deficit' : 'Balanced');
+    const statusClass = netPower > 0 ? 'surplus' : (netPower < 0 ? 'deficit' : 'balanced');
+
+    container.innerHTML = [
+        '<div class="power-balance-card">',
+        '<div class="power-balance-title">POWER BALANCE</div>',
+        `<div class="power-balance-status ${statusClass}">${statusLabel}</div>`,
+        '<div class="power-balance-metrics">',
+        `<div class="metric-row"><span>Internal generation</span><strong>${formatValue(totalGeneration)}</strong></div>`,
+        `<div class="metric-row"><span>Machine demand</span><strong>${formatValue(totalDemand)}</strong></div>`,
+        `<div class="metric-row"><span>Grid import</span><strong>${formatValue(gridImport)}</strong></div>`,
+        `<div class="metric-row"><span>Grid export</span><strong>${formatValue(gridExport)}</strong></div>`,
+        `<div class="metric-row"><span>Net power</span><strong>${netPower > 0 ? '+' : ''}${formatValue(netPower).replace(' MW', ' MW')}</strong></div>`,
+        `<div class="metric-row"><span>Self-sufficiency</span><strong>${totalDemand > 0 ? formatPercent(selfSufficiency) : 'No demand'}</strong></div>`,
+        '</div>',
+        '<div class="power-balance-bars">',
+        `<div class="bar-row"><span>Internal generation</span><div class="bar-track"><div class="bar-fill generation" style="width:${generationPct}%"></div></div><em>${formatValue(totalGeneration)}</em></div>`,
+        `<div class="bar-row"><span>Machine demand</span><div class="bar-track"><div class="bar-fill demand" style="width:${demandPct}%"></div></div><em>${formatValue(totalDemand)}</em></div>`,
+        '</div>',
+        '</div>'
+    ].join('');
 };
 
 PrototypeScene.prototype._getRecordCenter = function (rec) {

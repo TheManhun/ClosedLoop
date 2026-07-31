@@ -139,6 +139,10 @@ export default class BuildingManager {
             try { this.scene._connectionManager.updateConnectionsForRecord(record); } catch (e) { console.warn('Update connections failed', e); }
         }
 
+        if (typeof this.scene._refreshPowerBalance === 'function') {
+            try { this.scene._refreshPowerBalance(); } catch (e) { console.warn('Refresh power balance failed', e); }
+        }
+
         return record;
     }
 
@@ -204,6 +208,10 @@ export default class BuildingManager {
         // clear selection if it was selected
         if (this._selectedId === record.id) {
             this.clearSelection();
+        }
+
+        if (typeof this.scene._refreshPowerBalance === 'function') {
+            try { this.scene._refreshPowerBalance(); } catch (e) { console.warn('Refresh power balance failed', e); }
         }
 
         return true;

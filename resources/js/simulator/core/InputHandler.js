@@ -143,6 +143,9 @@ export default class InputHandler {
                 const record = this._dragState.record;
                 record.container.x = destIx * gs.minor;
                 record.container.y = destIy * gs.minor;
+                if (this.scene._connectionManager && typeof this.scene._connectionManager.updateConnectionsForBuilding === 'function') {
+                    this.scene._connectionManager.updateConnectionsForBuilding(record.id);
+                }
 
                 // Validate ignoring dragged record
                 const occupied = !this.buildingManager.canPlace(destIx, destIy, record.defKey, record);
