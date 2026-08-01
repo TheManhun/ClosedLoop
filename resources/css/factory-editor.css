@@ -11,25 +11,29 @@ html,body{height:100%;}
 /* Transparent overlay so the Phaser canvas (#simulator-root) remains fully visible underneath.
    This container only exists to host the toolbox and the (currently empty) viewport;
    it must never render its own opaque background/panel. */
-.factory-editor-root{position:relative;display:flex;height:70vh;min-height:480px;background:transparent;pointer-events:none;}
+.factory-editor-root{position:relative;display:flex;height:100%;width:100%;min-height:0;min-width:0;flex:1 1 auto;background:transparent;pointer-events:none;grid-column:1;grid-row:1;}
 .factory-editor-root #toolbox{pointer-events:auto}
 .factory-editor-root .component-card{pointer-events:auto}
 
-/* Left fixed expandable toolbox */
+/* Left expandable toolbox in the shared simulator grid */
 .toolbox, #toolbox {
-  position: fixed;
-  top: 34px;
-  left: 0;
-  bottom: 0;
-  width: 56px;
+  position: relative;
+  top: auto;
+  left: auto;
+  bottom: auto;
+  width: 60px;
+  min-width: 60px;
+  max-width: 60px;
   z-index: 11000;
   transition: width 180ms ease;
-  background: #0d0f10; /* requested toolbox background */
-  border-right: 1px solid rgba(57,255,136,0.45); /* fluorescent green border */
-  display:flex;flex-direction:column;padding:10px 12px;box-shadow:4px 0 18px rgba(57,255,136,0.08);backdrop-filter: blur(4px);
+  background: linear-gradient(180deg, #0d1117 0%, #070b10 100%);
+  border-right: 1px solid rgba(57,255,136,0.35);
+  display:flex;flex-direction:column;padding:10px 10px;box-shadow:4px 0 18px rgba(0,0,0,0.24);backdrop-filter: blur(8px);
   overflow: hidden;
+  height: 100%;
+  flex: 0 0 60px;
 }
-.toolbox.expanded, body.toolbox-is-expanded #toolbox{width:280px}
+.toolbox.expanded, body.toolbox-is-expanded #toolbox{width:220px;min-width:220px;max-width:220px;flex-basis:220px}
 body:not(.toolbox-is-expanded) #toolbox .toolbox-body{display:none}
 body:not(.toolbox-is-expanded) #toolbox .toolbox-title{display:none}
 .toolbox-header{display:flex;align-items:center;padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.04);position:relative;touch-action:none;-webkit-user-select:none;user-select:none}
@@ -90,24 +94,40 @@ body:not(.toolbox-is-expanded) #toolbox .toolbox-title{display:none}
 
 /* end toolbox styles */
 
-/* Push the simulator aside when the toolbox changes width */
+/* Phaser canvas sits in the centre column of the shared simulator grid */
 #simulator-root {
-  margin-left: 56px;
-  transition: margin-left 180ms ease;
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 0 !important;
+  background: #020617;
 }
 
-/* Toolbox open */
-body.toolbox-is-expanded #simulator-root {
-  margin-left: 280px;
+#simulator-root canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-@media (max-width: 800px) {
-  body.toolbox-is-expanded #simulator-root {
-    margin-left: 0;
-    margin-bottom: 280px;
-  }
+.simulator-root-wrapper .operations-centre {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  align-self: stretch;
+  overflow: hidden;
 }
+
+.viewport{flex:1 1 auto;min-width:0;min-height:0;height:100%}
 
 /* New toolbox card styles */
 .toolbox-card{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer;color:#e6eef8}
@@ -123,3 +143,305 @@ body.toolbox-is-expanded #simulator-root {
 
 /* Ensure toolbox scrolls independently */
 #toolbox .toolbox-body{overflow:auto}
+
+.operations-centre {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 20000;
+  width: 280px;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 170, 255, 0.16);
+  background: rgba(6, 12, 20, 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.24);
+  color: #f4f8ff;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.operations-centre.is-collapsed .operations-centre-body {
+  display: none !important;
+}
+
+.operations-centre-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.operations-centre-title-main {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.operations-centre-title-sub {
+  font-size: 10px;
+  color: rgba(220, 234, 255, 0.68);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.operations-centre-toggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.operations-centre-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+
+.operations-centre-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.operations-centre-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.operations-centre-body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+}
+
+.operations-centre-section {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.operations-centre-section:last-child {
+  border-bottom: 0;
+}
+
+.operations-centre-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: #f4f8ff;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.operations-centre-section-title {
+  font-size: 13px;
+  color: rgba(220, 234, 255, 0.92);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.operations-centre-section-summary {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(220, 234, 255, 0.7);
+}
+
+.operations-centre-chevron {
+  font-size: 11px;
+  color: rgba(220, 234, 255, 0.7);
+}
+
+.operations-centre-section.is-collapsed .operations-centre-section-heading {
+  padding-bottom: 0;
+}
+
+.operations-centre-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.operations-centre-chart-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.operations-centre-chart {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 140px;
+}
+
+.operations-centre-chart-inner {
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: rgba(4, 10, 17, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.operations-centre-chart-inner strong {
+  font-size: 16px;
+  color: #fff;
+}
+
+.operations-centre-chart-inner span {
+  font-size: 10px;
+  color: rgba(255,255,255,0.74);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.operations-centre-summary-text {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(220, 234, 255, 0.8);
+}
+
+.operations-centre-summary-text strong {
+  color: #fff;
+}
+
+.operations-centre-stat-list,
+.operations-centre-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.operations-centre-row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+}
+
+.operations-centre-row:last-child {
+  border-bottom: 0;
+}
+
+.operations-centre-row-label {
+  color: rgba(220, 234, 255, 0.74);
+}
+
+.operations-centre-row-value {
+  color: #f4f8ff;
+}
+
+.operations-centre-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.operations-centre-bar-row {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(220, 234, 255, 0.7);
+}
+
+.operations-centre-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.operations-centre-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #34d399, #60a5fa);
+}
+
+.operations-centre-resource-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.operations-centre-resource-row {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.operations-centre-resource-marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.operations-centre-resource-name {
+  color: #f4f8ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.operations-centre-resource-meta {
+  color: rgba(220, 234, 255, 0.7);
+  text-align: right;
+}
+
+@media (max-width: 980px) {
+  .operations-centre {
+    width: 260px;
+    max-width: 260px;
+  }
+}
+
+@media (max-width: 720px) {
+  .operations-centre {
+    width: 56px;
+    max-width: 56px;
+    padding: 8px 6px;
+  }
+
+  .operations-centre-header .operations-centre-title,
+  .operations-centre-body {
+    display: none;
+  }
+
+  .operations-centre-header {
+    justify-content: center;
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+}

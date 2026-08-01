@@ -6,7 +6,7 @@
 @section('content')
     <!-- simulator page title and description removed -->
 
-    <div class="simulator-root-wrapper" style="margin-top:1rem">
+    <div class="simulator-root-wrapper">
         <div id="simulator-root"></div>
         <div id="factory-editor-root" class="factory-editor-root">
             <aside id="toolbox" class="toolbox" aria-label="Toolbox">

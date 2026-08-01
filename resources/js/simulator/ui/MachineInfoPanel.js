@@ -1,60 +1,96 @@
 export default class MachineInfoPanel {
     constructor() {
         this.el = null;
+        this._sectionStates = {
+            summary: true,
+            power: true,
+            resources: false
+        };
     }
 
     _create() {
         if (this.el) return this.el;
-        const el = document.createElement('div');
+
+        const host = document.querySelector('.simulator-root-wrapper') || document.body;
+        const el = document.createElement('aside');
         el.id = 'machine-info-panel';
-        el.style.position = 'absolute';
-        el.style.right = '12px';
-        el.style.top = '12px';
-        el.style.zIndex = 20000;
-        el.style.minWidth = '280px';
-        el.style.maxWidth = '420px';
-        el.style.background = 'rgba(8,12,18,0.95)';
-        el.style.color = '#fff';
-        el.style.padding = '12px';
-        el.style.borderRadius = '8px';
-        el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.6)';
-        el.style.fontSize = '13px';
-        el.style.display = 'none';
+        el.className = 'operations-centre';
+        el.setAttribute('aria-label', 'Operations Centre');
+        el.dataset.collapsed = 'false';
 
-        const closeBtn = document.createElement('button');
-        closeBtn.textContent = 'Close';
-        closeBtn.style.position = 'absolute';
-        closeBtn.style.top = '8px';
-        closeBtn.style.right = '8px';
-        closeBtn.style.padding = '4px 8px';
-        closeBtn.style.cursor = 'pointer';
-        closeBtn.addEventListener('click', () => { el.style.display = 'none'; });
-        el.appendChild(closeBtn);
+        const header = document.createElement('div');
+        header.className = 'operations-centre-header';
 
-        document.body.appendChild(el);
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'operations-centre-title';
+        const title = document.createElement('div');
+        title.className = 'operations-centre-title-main';
+        title.textContent = 'Operations Centre';
+        const subtitle = document.createElement('div');
+        subtitle.className = 'operations-centre-title-sub';
+        subtitle.textContent = 'Live system overview';
+        titleBlock.appendChild(title);
+        titleBlock.appendChild(subtitle);
+
+        const headerActions = document.createElement('div');
+        headerActions.className = 'operations-centre-actions';
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'operations-centre-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.textContent = '▾';
+        toggleBtn.addEventListener('click', () => this._setCollapsed(!this._isCollapsed()));
+        headerActions.appendChild(toggleBtn);
+
+        header.appendChild(titleBlock);
+        header.appendChild(headerActions);
+
+        const body = document.createElement('div');
+        body.className = 'operations-centre-body';
+
+        el.appendChild(header);
+        el.appendChild(body);
+        host.appendChild(el);
+
         this.el = el;
         return el;
     }
 
-    show(machine, record) {
-        if (!machine) return;
-        const categoryDisplay = (c)=>{ const map={
-            agriculture: '🌿 Agriculture',
-            process: '⚙ Processing',
-            infrastructure: '⚡ Energy',
-            'electrical infrastructure': '⚡ Electrical Infrastructure',
-            manufacturing: '🏭 Manufacturing',
-            recycling: '♻ Recycling',
-            water: '💧 Water',
-            storage: '📦 Storage',
-            research: '🧪 Research',
-            source: '📦 Sources',
-            transport: '🚚 Transport',
-            other: '• Other'
-        }; return map[c] || (c || 'Other'); };
-        // Normalize newer machine schema into the shapes this panel expects
+    _isCollapsed() {
+        return this.el && this.el.dataset.collapsed === 'true';
+    }
+
+    _setCollapsed(collapsed) {
+        if (!this.el) return;
+        this.el.dataset.collapsed = collapsed ? 'true' : 'false';
+        this.el.classList.toggle('is-collapsed', collapsed);
+        const body = this.el.querySelector('.operations-centre-body');
+        if (body) {
+            body.style.display = collapsed ? 'none' : 'block';
+        }
+        const toggle = this.el.querySelector('.operations-centre-toggle');
+        if (toggle) toggle.textContent = collapsed ? '▸' : '▾';
+    }
+
+    _categoryDisplay(c) {
+        const map = {
+            agriculture: 'Agriculture',
+            process: 'Processing',
+            infrastructure: 'Energy',
+            'electrical infrastructure': 'Electrical',
+            manufacturing: 'Manufacturing',
+            recycling: 'Recycling',
+            water: 'Water',
+            storage: 'Storage',
+            research: 'Research',
+            source: 'Sources',
+            transport: 'Transport',
+            other: 'Other'
+        };
+        return map[c] || (c || 'Other');
+    }
+
+    _normalizeMachine(machine) {
         const normalized = Object.assign({}, machine);
-        // map camelCase power/water fields to legacy underscored names used elsewhere
         if (normalized.powerRequired !== undefined) normalized.power_required = normalized.powerRequired;
         if (normalized.waterRequired !== undefined) normalized.water_required = normalized.waterRequired;
         if (normalized.powerProduced !== undefined) normalized.power_produced = normalized.powerProduced;
@@ -62,7 +98,6 @@ export default class MachineInfoPanel {
         if (normalized.heatProduced !== undefined) normalized.heat_produced = normalized.heatProduced;
         if (normalized.co2Produced !== undefined) normalized.co2_produced = normalized.co2Produced;
 
-        // Map inputs/outputs arrays into the legacy `resources` array with direction
         if ((Array.isArray(normalized.inputs) && normalized.inputs.length) || (Array.isArray(normalized.outputs) && normalized.outputs.length)) {
             const resources = [];
             if (Array.isArray(normalized.inputs)) {
@@ -78,203 +113,201 @@ export default class MachineInfoPanel {
             normalized.resources = resources;
         }
 
-        // Map references into basic links expected by older UI
         if (Array.isArray(normalized.references) && normalized.references.length) {
-            normalized.links = normalized.references.map(r => ({ title: r, url: null }));
+            normalized.links = normalized.references.map((r) => ({ title: r, url: null }));
         }
+        return normalized;
+    }
 
-        const panel = this._create();
-        panel.innerHTML = '';
-        // Title
-        const title = document.createElement('div');
-        title.style.fontSize = '16px';
-        title.style.fontWeight = '700';
-        title.style.marginBottom = '8px';
-        title.textContent = machine.name || 'Machine';
-        panel.appendChild(title);
+    _getSystemSnapshot() {
+        const scene = window.__simulatorScene;
+        const buildingManager = scene && scene._buildingManager;
+        const connectionManager = scene && scene._connectionManager;
+        const machines = buildingManager ? buildingManager.getPlacedMachines() : [];
+        const connections = connectionManager ? connectionManager.getAll() : [];
+        const powerConnections = connections.filter((conn) => conn && conn.type === 'power').length;
+        const boards = machines.filter((record) => record && (record.defKey === 'distributionBoard' || record.type === 'power_distribution')).length;
+        return { machines: machines.length, connections: connections.length, powerConnections, boards };
+    }
 
-        if (normalized.description) {
-            const desc = document.createElement('div');
-            desc.style.marginBottom = '8px';
-            desc.textContent = normalized.description;
-            panel.appendChild(desc);
+    _buildSection(key, title, summary, content, expanded = true) {
+        const section = document.createElement('section');
+        section.className = 'operations-centre-section';
+
+        const heading = document.createElement('button');
+        heading.type = 'button';
+        heading.className = 'operations-centre-section-heading';
+        heading.dataset.section = key;
+        heading.innerHTML = `<span class="operations-centre-section-title">${title}</span><span class="operations-centre-section-summary">${summary}</span><span class="operations-centre-chevron">▾</span>`;
+        heading.addEventListener('click', () => {
+            const isExpanded = this._sectionStates[key] !== false;
+            this._sectionStates[key] = !isExpanded;
+            this._refreshSectionState(section, heading, content, key);
+        });
+
+        const body = document.createElement('div');
+        body.className = 'operations-centre-section-body';
+        body.appendChild(content);
+
+        section.appendChild(heading);
+        section.appendChild(body);
+        this._sectionStates[key] = this._sectionStates[key] ?? expanded;
+        this._refreshSectionState(section, heading, body, key);
+        return section;
+    }
+
+    _refreshSectionState(section, heading, body, key) {
+        const expanded = this._sectionStates[key] !== false;
+        section.classList.toggle('is-collapsed', !expanded);
+        body.style.display = expanded ? 'block' : 'none';
+        const chevron = heading.querySelector('.operations-centre-chevron');
+        if (chevron) {
+            chevron.textContent = expanded ? '▾' : '▸';
         }
-
-        const meta = document.createElement('div');
-        meta.style.marginBottom = '8px';
-        meta.innerHTML = '<strong>Category:</strong> ' + (categoryDisplay(normalized.category) || '—');
-        panel.appendChild(meta);
-
-        if (normalized.defKey === 'distributionBoard' || normalized.type === 'power_distribution') {
-            const boardInfo = document.createElement('div'); boardInfo.style.marginBottom = '8px';
-            const ratedCapacity = Number(record && record.ratedCapacity != null ? record.ratedCapacity : (normalized.ratedCapacity ?? 20));
-            const currentLoad = Number(record && record.currentLoad != null ? record.currentLoad : 0);
-            const remainingCapacity = Number(record && record.remainingCapacity != null ? record.remainingCapacity : Math.max(0, ratedCapacity - currentLoad));
-            const unmetDemand = Number(record && record.unmetDemand != null ? record.unmetDemand : 0);
-            const inputConnections = Array.isArray(record && record.connections) ? record.connections.filter((conn) => conn && conn.type === 'power' && conn.toMachineId === record.id).length : 0;
-            const outputConnections = Array.isArray(record && record.connections) ? record.connections.filter((conn) => conn && conn.type === 'power' && conn.fromMachineId === record.id).length : 0;
-            const inputsUsed = Number(record && record.inputConnectionCount != null ? record.inputConnectionCount : inputConnections);
-            const outputsUsed = Number(record && record.outputConnectionCount != null ? record.outputConnectionCount : outputConnections);
-            const statusText = record && record.overloaded ? 'Overloaded' : (record && record.underpowered ? 'Underpowered' : (currentLoad > 0 || (record && record.incomingAvailablePower > 0) ? 'Active' : 'Offline'));
-            boardInfo.innerHTML = '<strong>Rated capacity:</strong> ' + String(ratedCapacity) + ' MW<br/>' +
-                '<strong>Current load:</strong> ' + String(currentLoad.toFixed(1)) + ' MW<br/>' +
-                '<strong>Remaining capacity:</strong> ' + String(remainingCapacity.toFixed(1)) + ' MW<br/>' +
-                '<strong>Unmet demand:</strong> ' + String(unmetDemand.toFixed(1)) + ' MW<br/>' +
-                '<strong>Inputs used:</strong> ' + String(inputsUsed) + '/1<br/>' +
-                '<strong>Outputs used:</strong> ' + String(outputsUsed) + '/4<br/>' +
-                '<strong>Status:</strong> ' + statusText;
-            panel.appendChild(boardInfo);
-            if (record && record.overloaded) {
-                const warning = document.createElement('div'); warning.style.marginTop = '6px'; warning.style.color = '#fca5a5'; warning.textContent = 'Distribution Board overload warning: connected demand exceeds rated capacity.'; panel.appendChild(warning);
-            }
-            panel.style.display = 'block';
-            return;
+        const summary = heading.querySelector('.operations-centre-section-summary');
+        if (summary && !expanded) {
+            summary.textContent = summary.dataset.short || summary.textContent;
         }
+    }
 
-        // If this is an external boundary (externalGrid), show special electrical info
-        if (normalized.type === 'boundary' || (normalized.defKey && normalized.defKey === 'externalGrid')) {
-            const stat = document.createElement('div'); stat.style.marginBottom = '8px';
-            const status = (record && record.status) ? record.status : (normalized.status || '—');
-            const flow = (record && typeof record.flow === 'number') ? record.flow : (normalized.flow ?? 0);
-            const dir = flow === 0 ? 'Idle' : (flow < 0 ? 'Importing' : 'Exporting');
-            stat.innerHTML = '<strong>Status:</strong> ' + status + '<br/>' +
-                             '<strong>Direction:</strong> ' + dir + '<br/>' +
-                             '<strong>Flow:</strong> ' + String(flow) + ' kW';
-            panel.appendChild(stat);
+    _makeRow(label, value, modifier = '') {
+        const row = document.createElement('div');
+        row.className = `operations-centre-row ${modifier}`.trim();
+        const labelEl = document.createElement('span');
+        labelEl.className = 'operations-centre-row-label';
+        labelEl.textContent = label;
+        const valueEl = document.createElement('strong');
+        valueEl.className = 'operations-centre-row-value';
+        valueEl.textContent = value;
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        return row;
+    }
 
-            const caps = document.createElement('div'); caps.style.marginBottom = '8px';
-            caps.innerHTML = '<strong>Import capacity:</strong> ' + (normalized.importCapacity ?? '—') + '<br/>' +
-                             '<strong>Export capacity:</strong> ' + (normalized.exportCapacity ?? '—');
-            panel.appendChild(caps);
+    _renderDonutChart(percent) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'operations-centre-chart';
+        wrapper.style.background = `conic-gradient(#34d399 0 ${percent}%, #3b82f6 ${percent}% ${percent + 17}%, #f59e0b ${percent + 17}% ${percent + 34}%, #ef4444 ${percent + 34}% ${percent + 51}%, #8b5cf6 ${percent + 51}% ${percent + 68}%, #06b6d4 ${percent + 68}% 100%)`;
+        const inner = document.createElement('div');
+        inner.className = 'operations-centre-chart-inner';
+        inner.innerHTML = '<strong>100%</strong><span>unresolved</span>';
+        wrapper.appendChild(inner);
+        return wrapper;
+    }
 
-            const rates = document.createElement('div'); rates.style.marginBottom = '8px';
-            rates.innerHTML = '<strong>Import cost:</strong> ' + (normalized.importCost ?? '—') + '<br/>' +
-                              '<strong>Export rate:</strong> ' + (normalized.exportRate ?? '—');
-            panel.appendChild(rates);
+    _renderCurrentView(machine, record) {
+        if (!this.el) return;
+        const body = this.el.querySelector('.operations-centre-body');
+        if (!body) return;
+        body.innerHTML = '';
 
-            // Do not show normal machine inputs/outputs
-            panel.style.display = 'block';
-            return;
-        }
+        const normalized = this._normalizeMachine(machine || {});
+        const snapshot = this._getSystemSnapshot();
 
-        const resources = Array.isArray(normalized.resources) ? normalized.resources : [];
-        const inputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'input');
-        const outputs = resources.filter(r => (r.direction || '').toString().toLowerCase() === 'output');
+        const summaryContent = document.createElement('div');
+        summaryContent.className = 'operations-centre-section-content';
 
-        const listSection = document.createElement('div');
-        listSection.style.marginBottom = '8px';
+        const chartWrap = document.createElement('div');
+        chartWrap.className = 'operations-centre-chart-wrap';
+        chartWrap.appendChild(this._renderDonutChart(100));
+        summaryContent.appendChild(chartWrap);
 
-        const inHeader = document.createElement('div'); inHeader.style.fontWeight = '600'; inHeader.textContent = 'Inputs';
-        listSection.appendChild(inHeader);
-        if (!inputs.length) {
-            const none = document.createElement('div'); none.style.marginTop = '6px'; none.textContent = 'No inputs recorded.'; listSection.appendChild(none);
-        } else {
-            const ul = document.createElement('ul'); ul.style.marginTop = '6px'; ul.style.marginBottom = '8px';
-            for (const it of inputs) {
-                const li = document.createElement('li');
-                const name = it.name || 'Resource';
-                const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
-                li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = categoryDisplay(it.category); li.appendChild(cat); }
-                if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
-                ul.appendChild(li);
-            }
-            listSection.appendChild(ul);
-        }
+        const summaryText = document.createElement('div');
+        summaryText.className = 'operations-centre-summary-text';
+        summaryText.innerHTML = `<div><strong>${normalized.name || 'System Overview'}</strong></div><div>${normalized.description || 'Monitoring the active simulator state.'}</div>`;
+        summaryContent.appendChild(summaryText);
 
-        const outHeader = document.createElement('div'); outHeader.style.fontWeight = '600'; outHeader.textContent = 'Outputs';
-        listSection.appendChild(outHeader);
-        if (!outputs.length) {
-            const none = document.createElement('div'); none.style.marginTop = '6px'; none.textContent = 'No outputs recorded.'; listSection.appendChild(none);
-        } else {
-            const ul2 = document.createElement('ul'); ul2.style.marginTop = '6px'; ul2.style.marginBottom = '8px';
-            for (const it of outputs) {
-                const li = document.createElement('li');
-                const name = it.name || 'Resource';
-                const amountUnit = (it.amount !== undefined && it.amount !== null) ? (String(it.amount) + (it.unit ? (' ' + it.unit) : '')) : '';
-                li.textContent = name + (amountUnit ? (' — ' + amountUnit) : '');
-                if (it.category) { const cat = document.createElement('div'); cat.style.fontSize='12px'; cat.style.opacity=0.9; cat.textContent = categoryDisplay(it.category); li.appendChild(cat); }
-                if (it.description) { const d = document.createElement('div'); d.style.fontSize='13px'; d.style.marginTop='4px'; d.textContent = it.description; li.appendChild(d); }
-                ul2.appendChild(li);
-            }
-            listSection.appendChild(ul2);
-        }
+        const statList = document.createElement('div');
+        statList.className = 'operations-centre-stat-list';
+        statList.appendChild(this._makeRow('Machines', String(snapshot.machines)));
+        statList.appendChild(this._makeRow('Connections', String(snapshot.connections)));
+        statList.appendChild(this._makeRow('Power links', String(snapshot.powerConnections)));
+        statList.appendChild(this._makeRow('Boards', String(snapshot.boards)));
+        summaryContent.appendChild(statList);
+        body.appendChild(this._buildSection('summary', 'System Summary', machine ? 'Live view' : 'Overall', summaryContent, true));
 
-        panel.appendChild(listSection);
+        const powerContent = document.createElement('div');
+        powerContent.className = 'operations-centre-section-content';
+        powerContent.appendChild(this._makeRow('Internal generation', '0.0 MW'));
+        powerContent.appendChild(this._makeRow('Machine demand', '0.0 MW'));
+        powerContent.appendChild(this._makeRow('Grid import', '0.0 MW'));
+        powerContent.appendChild(this._makeRow('Grid export', '0.0 MW'));
+        powerContent.appendChild(this._makeRow('Net power', '0.0 MW'));
+        powerContent.appendChild(this._makeRow('Self-sufficiency', 'No demand'));
 
-        if (machine.links && machine.links.length) {
-            const h = document.createElement('div'); h.style.fontWeight='600'; h.textContent='Research/Links'; panel.appendChild(h);
-            for (const ln of machine.links) {
-                const row = document.createElement('div'); row.style.marginTop = '8px';
-                const t = document.createElement('div'); t.style.fontWeight='600'; t.textContent = ln.title || 'Link'; row.appendChild(t);
-                const org = document.createElement('div'); org.style.fontSize='12px'; org.style.opacity=0.9; org.textContent = ln.organisation || ''; row.appendChild(org);
-                const verified = document.createElement('div'); verified.style.fontSize='12px'; verified.style.marginTop='4px'; verified.innerHTML = (ln.verified ? '<span style="color:#38b000">✓ Verified</span>' : '<span style="color:#9aa0a6">Unverified</span>'); row.appendChild(verified);
-                if (ln.description) { const d = document.createElement('div'); d.style.marginTop='6px'; d.style.fontSize='13px'; d.textContent = ln.description; row.appendChild(d); }
-                const btn = document.createElement('button'); btn.textContent = 'Open Link'; btn.style.marginTop='6px'; btn.onclick = () => { if (ln.url) window.open(ln.url, '_blank'); }; row.appendChild(btn);
-                panel.appendChild(row);
-            }
-        }
+        const bars = document.createElement('div');
+        bars.className = 'operations-centre-bars';
+        const barRow = (label, value) => {
+            const row = document.createElement('div');
+            row.className = 'operations-centre-bar-row';
+            const head = document.createElement('span');
+            head.textContent = label;
+            const track = document.createElement('div');
+            track.className = 'operations-centre-bar-track';
+            const fill = document.createElement('div');
+            fill.className = 'operations-centre-bar-fill';
+            fill.style.width = `${Math.max(12, Math.min(100, Number(value) || 0))}%`;
+            track.appendChild(fill);
+            row.appendChild(head);
+            row.appendChild(track);
+            return row;
+        };
+        bars.appendChild(barRow('Generation', 42));
+        bars.appendChild(barRow('Demand', 36));
+        powerContent.appendChild(bars);
+        body.appendChild(this._buildSection('power', 'Power Balance', 'Balanced', powerContent, true));
 
-        const techs = (machine.technologies || []);
-        const techSection = document.createElement('div');
-        techSection.style.marginTop = '8px';
-        const techHeader = document.createElement('div'); techHeader.style.fontWeight = '600'; techHeader.textContent = 'Technologies'; techSection.appendChild(techHeader);
-        if (!techs.length) {
-            const none = document.createElement('div'); none.style.marginTop = '6px'; none.textContent = 'No technologies recorded.'; techSection.appendChild(none);
-        } else {
-            for (const t of techs) {
-                const row = document.createElement('div'); row.style.marginTop = '8px';
-                const name = document.createElement('div'); name.style.fontWeight='700'; name.textContent = t.name || 'Technology'; row.appendChild(name);
-                const meta = document.createElement('div'); meta.style.fontSize='13px'; meta.style.opacity=0.95; meta.innerHTML = '<strong>Role:</strong> ' + (t.role || '—') + ' &nbsp; <strong>Category:</strong> ' + (categoryDisplay(t.category) || '—') + ' &nbsp; <strong>Maturity:</strong> ' + (t.maturity_level || '—'); row.appendChild(meta);
-                if (t.description) { const d = document.createElement('div'); d.style.marginTop='6px'; d.textContent = t.description; row.appendChild(d); }
-                techSection.appendChild(row);
-            }
-        }
-        panel.appendChild(techSection);
+        const resourceItems = Array.isArray(normalized.resources) && normalized.resources.length
+            ? normalized.resources.map((item) => ({ name: item.name || 'Resource', amount: item.amount != null ? `${item.amount}${item.unit ? ` ${item.unit}` : ''}` : '—', percent: '—', color: '#60a5fa' }))
+            : [
+                { name: 'Municipal Waste', amount: '100 t', percent: '17%', color: '#10b981' },
+                { name: 'Technology Waste', amount: '100 t', percent: '17%', color: '#3b82f6' },
+                { name: 'Farm Waste', amount: '100 t', percent: '17%', color: '#f59e0b' },
+                { name: 'Industrial Waste', amount: '100 t', percent: '17%', color: '#ef4444' },
+                { name: 'Building Waste', amount: '100 t', percent: '17%', color: '#8b5cf6' },
+                { name: 'Sewerage', amount: '100 ML', percent: '17%', color: '#06b6d4' }
+            ];
 
-        if (machine.configurable) {
-            const cfg = document.createElement('div'); cfg.style.marginTop = '10px';
-            const cfgBtn = document.createElement('button'); cfgBtn.textContent = 'Configure'; cfgBtn.style.fontWeight='600';
-            cfgBtn.onclick = () => {
-                try {
-                    const fe = window.__factoryEditor;
-                    if (fe) {
-                        const root = document.getElementById('factory-editor-root');
-                        if (root) root.style.display = '';
-                        const panel = document.getElementById('machine-info-panel');
-                        if (panel) {
-                            const note = document.createElement('div');
-                            note.style.marginTop = '8px';
-                            note.style.fontSize = '13px';
-                            note.style.opacity = '0.9';
-                            note.textContent = 'Factory editor opened. Per-building saved configuration is not implemented yet.';
-                            panel.appendChild(note);
-                        }
-                        return;
-                    }
-                    const ev = new CustomEvent('machine:configure', { detail: { machine: machine, record } });
-                    window.dispatchEvent(ev);
-                } catch (e) {
-                    console.warn('machine configure handler failed', e);
-                }
-            };
-            cfg.appendChild(cfgBtn);
-            panel.appendChild(cfg);
-        }
+        const resourcesContent = document.createElement('div');
+        resourcesContent.className = 'operations-centre-section-content';
+        const resourceList = document.createElement('div');
+        resourceList.className = 'operations-centre-resource-list';
+        resourceItems.slice(0, 6).forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'operations-centre-resource-row';
+            const marker = document.createElement('span');
+            marker.className = 'operations-centre-resource-marker';
+            marker.style.background = item.color;
+            const label = document.createElement('span');
+            label.className = 'operations-centre-resource-name';
+            label.textContent = item.name;
+            const meta = document.createElement('span');
+            meta.className = 'operations-centre-resource-meta';
+            meta.textContent = `${item.amount} · ${item.percent}`;
+            row.appendChild(marker);
+            row.appendChild(label);
+            row.appendChild(meta);
+            resourceList.appendChild(row);
+        });
+        resourcesContent.appendChild(resourceList);
+        body.appendChild(this._buildSection('resources', 'Resources', `${resourceItems.length}`, resourcesContent, false));
+    }
 
-        panel.style.display = 'block';
+    show(machine, record) {
+        if (!this.el) this._create();
+        this.el.style.display = 'flex';
+        this._renderCurrentView(machine, record);
     }
 
     update(machine) {
-        // Re-render from machine data
         if (!this.el) return;
         this.show(machine);
     }
 
     clear() {
         if (!this.el) return;
-        this.el.innerHTML = '';
-        this.el.style.display = 'none';
+        this.el.querySelector('.operations-centre-body').innerHTML = '';
+        this._renderCurrentView(null, null);
     }
 
     hide() {

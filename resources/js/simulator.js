@@ -69,7 +69,7 @@ class PrototypeScene extends Phaser.Scene {
             document.body.classList.toggle('toolbox-is-expanded', isExpanded);
             toggle.setAttribute('aria-expanded', String(isExpanded));
             if (simRoot) {
-                simRoot.style.marginLeft = isExpanded ? '280px' : '56px';
+                simRoot.style.marginLeft = isExpanded ? '240px' : '60px';
             }
         };
 

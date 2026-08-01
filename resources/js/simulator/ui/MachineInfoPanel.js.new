@@ -1,0 +1,363 @@
+export default class MachineInfoPanel {
+    constructor() {
+        this.el = null;
+        this.statusBar = null;
+        this.activeTab = 'overview';
+        this._collapsed = false;
+    }
+
+    _create() {
+        if (this.el) return this.el;
+
+        const host = document.querySelector('.simulator-root-wrapper') || document.body;
+        const el = document.createElement('aside');
+        el.id = 'machine-info-panel';
+        el.className = 'operations-centre';
+        el.setAttribute('aria-label', 'Operations Centre');
+        el.dataset.collapsed = 'false';
+        el.dataset.activeTab = 'overview';
+
+        const header = document.createElement('div');
+        header.className = 'operations-centre-header';
+
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'operations-centre-title';
+        const title = document.createElement('div');
+        title.className = 'operations-centre-title-main';
+        title.textContent = 'Operations Centre';
+        const subtitle = document.createElement('div');
+        subtitle.className = 'operations-centre-title-sub';
+        subtitle.textContent = 'Live system overview';
+        titleBlock.appendChild(title);
+        titleBlock.appendChild(subtitle);
+
+        const headerActions = document.createElement('div');
+        headerActions.className = 'operations-centre-actions';
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'operations-centre-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.textContent = '▾';
+        toggleBtn.addEventListener('click', () => this._setCollapsed(!this._collapsed));
+        headerActions.appendChild(toggleBtn);
+
+        header.appendChild(titleBlock);
+        header.appendChild(headerActions);
+
+        const tabs = document.createElement('div');
+        tabs.className = 'operations-centre-tabs';
+        ['overview', 'power', 'resources', 'warnings'].forEach((tabKey) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'operations-centre-tab';
+            btn.dataset.tab = tabKey;
+            btn.textContent = tabKey === 'overview' ? 'Overview' : tabKey.charAt(0).toUpperCase() + tabKey.slice(1);
+            btn.addEventListener('click', () => this._switchTab(tabKey));
+            tabs.appendChild(btn);
+        });
+
+        const body = document.createElement('div');
+        body.className = 'operations-centre-body';
+
+        el.appendChild(header);
+        el.appendChild(tabs);
+        el.appendChild(body);
+        host.appendChild(el);
+
+        this.el = el;
+        this._createStatusBar(host);
+        return el;
+    }
+
+    _createStatusBar(host) {
+        if (this.statusBar) return this.statusBar;
+        const bar = document.createElement('div');
+        bar.id = 'simulator-status-bar';
+        bar.className = 'simulator-status-bar';
+        host.appendChild(bar);
+        this.statusBar = bar;
+        return bar;
+    }
+
+    _setCollapsed(collapsed) {
+        if (!this.el) return;
+        this._collapsed = !!collapsed;
+        this.el.dataset.collapsed = this._collapsed ? 'true' : 'false';
+        this.el.classList.toggle('is-collapsed', this._collapsed);
+        const body = this.el.querySelector('.operations-centre-body');
+        const tabs = this.el.querySelector('.operations-centre-tabs');
+        if (body) body.style.display = this._collapsed ? 'none' : 'block';
+        if (tabs) tabs.style.display = this._collapsed ? 'none' : 'flex';
+        const toggle = this.el.querySelector('.operations-centre-toggle');
+        if (toggle) toggle.textContent = this._collapsed ? '▸' : '▾';
+        this._refreshStatusBar();
+    }
+
+    _switchTab(tabKey) {
+        if (!this.el) return;
+        this.activeTab = tabKey;
+        this.el.dataset.activeTab = tabKey;
+        this._renderCurrentView();
+    }
+
+    _categoryDisplay(c) {
+        const map = {
+            agriculture: '🌿 Agriculture',
+            process: '⚙ Processing',
+            infrastructure: '⚡ Energy',
+            'electrical infrastructure': '⚡ Electrical Infrastructure',
+            manufacturing: '🏭 Manufacturing',
+            recycling: '♻ Recycling',
+            water: '💧 Water',
+            storage: '📦 Storage',
+            research: '🧪 Research',
+            source: '📦 Sources',
+            transport: '🚚 Transport',
+            other: '• Other'
+        };
+        return map[c] || (c || 'Other');
+    }
+
+    _normalizeMachine(machine) {
+        const normalized = Object.assign({}, machine);
+        if (normalized.powerRequired !== undefined) normalized.power_required = normalized.powerRequired;
+        if (normalized.waterRequired !== undefined) normalized.water_required = normalized.waterRequired;
+        if (normalized.powerProduced !== undefined) normalized.power_produced = normalized.powerProduced;
+        if (normalized.waterProduced !== undefined) normalized.water_produced = normalized.waterProduced;
+        if (normalized.heatProduced !== undefined) normalized.heat_produced = normalized.heatProduced;
+        if (normalized.co2Produced !== undefined) normalized.co2_produced = normalized.co2Produced;
+
+        if ((Array.isArray(normalized.inputs) && normalized.inputs.length) || (Array.isArray(normalized.outputs) && normalized.outputs.length)) {
+            const resources = [];
+            if (Array.isArray(normalized.inputs)) {
+                for (const it of normalized.inputs) {
+                    resources.push({ direction: 'input', name: it.resourceId || it.name || '', amount: it.quantity ?? it.amount, unit: it.units ?? it.unit, resourceId: it.resourceId });
+                }
+            }
+            if (Array.isArray(normalized.outputs)) {
+                for (const it of normalized.outputs) {
+                    resources.push({ direction: 'output', name: it.resourceId || it.name || '', amount: it.quantity ?? it.amount, unit: it.units ?? it.unit, resourceId: it.resourceId });
+                }
+            }
+            normalized.resources = resources;
+        }
+
+        if (Array.isArray(normalized.references) && normalized.references.length) {
+            normalized.links = normalized.references.map((r) => ({ title: r, url: null }));
+        }
+        return normalized;
+    }
+
+    _getSystemSnapshot() {
+        const scene = window.__simulatorScene;
+        const buildingManager = scene && scene._buildingManager;
+        const connectionManager = scene && scene._connectionManager;
+        const machines = buildingManager ? buildingManager.getPlacedMachines() : [];
+        const connections = connectionManager ? connectionManager.getAll() : [];
+        const powerConnections = connections.filter((conn) => conn && conn.type === 'power').length;
+        const boards = machines.filter((record) => record && (record.defKey === 'distributionBoard' || record.type === 'power_distribution')).length;
+        return { machines: machines.length, connections: connections.length, powerConnections, boards };
+    }
+
+    _refreshStatusBar() {
+        if (!this.statusBar) return;
+        const scene = window.__simulatorScene;
+        const snapshot = this._getSystemSnapshot();
+        const zoom = scene && scene.cameras && scene.cameras.main ? scene.cameras.main.zoom.toFixed(2) : '1.00';
+        this.statusBar.innerHTML = [
+            `<span>Zoom ${zoom}×</span>`,
+            `<span>Mouse —</span>`,
+            `<span>${snapshot.machines} machines</span>`,
+            `<span>${snapshot.connections} connections</span>`,
+            `<span>${snapshot.powerConnections} power links</span>`,
+            `<span>${snapshot.boards} boards</span>`,
+            `<span>Status running</span>`
+        ].join('');
+    }
+
+    _renderCurrentView(machine, record) {
+        if (!this.el) return;
+        const body = this.el.querySelector('.operations-centre-body');
+        if (!body) return;
+        body.innerHTML = '';
+
+        const normalized = this._normalizeMachine(machine || {});
+        const activeTab = this.el.dataset.activeTab || this.activeTab || 'overview';
+        const snapshot = this._getSystemSnapshot();
+
+        const makeSection = (title, bodyContent) => {
+            const section = document.createElement('div');
+            section.className = 'operations-centre-section';
+            const heading = document.createElement('div');
+            heading.className = 'operations-centre-section-title';
+            heading.textContent = title;
+            section.appendChild(heading);
+            section.appendChild(bodyContent);
+            return section;
+        };
+
+        const makeMetric = (label, value, tone = 'neutral') => {
+            const row = document.createElement('div');
+            row.className = 'operations-centre-metric';
+            const name = document.createElement('span');
+            name.className = 'operations-centre-metric-label';
+            name.textContent = label;
+            const valueEl = document.createElement('strong');
+            valueEl.className = `operations-centre-metric-value ${tone}`;
+            valueEl.textContent = value;
+            row.appendChild(name);
+            row.appendChild(valueEl);
+            return row;
+        };
+
+        if (!machine || !record) {
+            const overview = document.createElement('div');
+            overview.appendChild(makeMetric('Machines', snapshot.machines));
+            overview.appendChild(makeMetric('Connections', snapshot.connections));
+            overview.appendChild(makeMetric('Power links', snapshot.powerConnections));
+            overview.appendChild(makeMetric('Boards', snapshot.boards));
+            body.appendChild(makeSection('System overview', overview));
+            this._refreshStatusBar();
+            return;
+        }
+
+        if (activeTab === 'power') {
+            if (normalized.defKey === 'distributionBoard' || normalized.type === 'power_distribution') {
+                const ratedCapacity = Number(record && record.ratedCapacity != null ? record.ratedCapacity : (normalized.ratedCapacity ?? 20));
+                const currentLoad = Number(record && record.currentLoad != null ? record.currentLoad : 0);
+                const remainingCapacity = Number(record && record.remainingCapacity != null ? record.remainingCapacity : Math.max(0, ratedCapacity - currentLoad));
+                const outputsUsed = Number(record && record.outputConnectionCount != null ? record.outputConnectionCount : (Array.isArray(record && record.connections) ? record.connections.filter((conn) => conn && conn.type === 'power' && conn.fromMachineId === record.id).length : 0));
+                const powerBody = document.createElement('div');
+                powerBody.appendChild(makeMetric('Rated capacity', `${ratedCapacity.toFixed(1)} MW`));
+                powerBody.appendChild(makeMetric('Current load', `${currentLoad.toFixed(1)} MW`));
+                powerBody.appendChild(makeMetric('Remaining', `${remainingCapacity.toFixed(1)} MW`, remainingCapacity > 0 ? 'neutral' : 'warn'));
+                powerBody.appendChild(makeMetric('Outputs used', `${outputsUsed}/4`));
+                body.appendChild(makeSection('Power', powerBody));
+            } else {
+                const powerBody = document.createElement('div');
+                powerBody.appendChild(makeMetric('Power required', normalized.power_required != null ? String(normalized.power_required) : '—'));
+                powerBody.appendChild(makeMetric('Power produced', normalized.power_produced != null ? String(normalized.power_produced) : '—'));
+                body.appendChild(makeSection('Power', powerBody));
+            }
+            return;
+        }
+
+        if (activeTab === 'resources') {
+            const resourcesBody = document.createElement('div');
+            const resources = Array.isArray(normalized.resources) ? normalized.resources : [];
+            const inputs = resources.filter((item) => (item.direction || '').toString().toLowerCase() === 'input');
+            const outputs = resources.filter((item) => (item.direction || '').toString().toLowerCase() === 'output');
+            const list = document.createElement('div');
+            const addResourceGroup = (title, items) => {
+                if (!items.length) return;
+                const group = document.createElement('div');
+                group.className = 'operations-centre-resource-group';
+                const groupTitle = document.createElement('div');
+                groupTitle.className = 'operations-centre-resource-group-title';
+                groupTitle.textContent = title;
+                group.appendChild(groupTitle);
+                items.forEach((item) => {
+                    const row = document.createElement('div');
+                    row.className = 'operations-centre-resource-item';
+                    const name = document.createElement('div');
+                    name.textContent = item.name || 'Resource';
+                    const meta = document.createElement('div');
+                    meta.className = 'operations-centre-resource-meta';
+                    const amount = item.amount != null ? `${item.amount}${item.unit ? ` ${item.unit}` : ''}` : '—';
+                    meta.textContent = amount;
+                    row.appendChild(name);
+                    row.appendChild(meta);
+                    group.appendChild(row);
+                });
+                list.appendChild(group);
+            };
+            addResourceGroup('Inputs', inputs);
+            addResourceGroup('Outputs', outputs);
+            resourcesBody.appendChild(list);
+            body.appendChild(makeSection('Resources', resourcesBody));
+            return;
+        }
+
+        if (activeTab === 'warnings') {
+            const warningsBody = document.createElement('div');
+            const warns = [];
+            if (normalized.defKey === 'distributionBoard' || normalized.type === 'power_distribution') {
+                warns.push('Distribution board remains available for controlled power routing.');
+            }
+            if (!warns.length) warns.push('No active warnings.');
+            warns.forEach((msg) => {
+                const row = document.createElement('div');
+                row.className = 'operations-centre-warning';
+                row.textContent = msg;
+                warningsBody.appendChild(row);
+            });
+            body.appendChild(makeSection('Warnings', warningsBody));
+            return;
+        }
+
+        const overviewBody = document.createElement('div');
+        const title = document.createElement('div');
+        title.className = 'operations-centre-main-title';
+        title.textContent = normalized.name || 'Machine';
+        overviewBody.appendChild(title);
+
+        if (normalized.description) {
+            const desc = document.createElement('div');
+            desc.className = 'operations-centre-description';
+            desc.textContent = normalized.description;
+            overviewBody.appendChild(desc);
+        }
+
+        overviewBody.appendChild(makeMetric('Category', this._categoryDisplay(normalized.category || 'other')));
+        overviewBody.appendChild(makeMetric('Status', record && record.status ? String(record.status) : 'Active'));
+        if (normalized.defKey === 'distributionBoard' || normalized.type === 'power_distribution') {
+            const load = record && record.currentLoad != null ? Number(record.currentLoad).toFixed(1) : '0.0';
+            overviewBody.appendChild(makeMetric('Current load', `${load} MW`));
+        }
+        if (normalized.links && normalized.links.length) {
+            const linkList = document.createElement('div');
+            linkList.className = 'operations-centre-link-list';
+            normalized.links.slice(0, 3).forEach((link) => {
+                const linkEl = document.createElement('div');
+                linkEl.className = 'operations-centre-link';
+                linkEl.textContent = link.title || 'Link';
+                linkList.appendChild(linkEl);
+            });
+            overviewBody.appendChild(linkList);
+        }
+        body.appendChild(makeSection('Overview', overviewBody));
+    }
+
+    show(machine, record) {
+        if (!this.el) this._create();
+        this.el.style.display = 'flex';
+        this._renderCurrentView(machine, record);
+        this._refreshStatusBar();
+    }
+
+    update(machine) {
+        if (!this.el) return;
+        this.show(machine);
+    }
+
+    clear() {
+        if (!this.el) return;
+        this.el.querySelector('.operations-centre-body').innerHTML = '';
+        this._renderCurrentView(null, null);
+        this._refreshStatusBar();
+    }
+
+    hide() {
+        if (!this.el) return;
+        this.el.style.display = 'none';
+    }
+
+    destroy() {
+        if (!this.el) return;
+        try { this.el.remove(); } catch (e) {}
+        if (this.statusBar) {
+            try { this.statusBar.remove(); } catch (e) {}
+        }
+        this.el = null;
+        this.statusBar = null;
+    }
+}
