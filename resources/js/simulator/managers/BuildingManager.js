@@ -57,6 +57,7 @@ export default class BuildingManager {
         const x = ix * gs.minor;
         const y = iy * gs.minor;
         const container = this.scene.add.container(x, y);
+        container.setDepth(500);
 
         const [fw, fh] = def.footprint;
         const textureKey = def.textureKey || def.image || 'processingPlant';

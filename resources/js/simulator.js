@@ -155,7 +155,7 @@ class PrototypeScene extends Phaser.Scene {
                     {
                         id: 'distributionBoard',
                         defKey: 'distributionBoard',
-                        name: 'Distribution Board',
+                        name: 'Power Board',
                         category: 'infrastructure',
                         description: 'Receives electrical power and distributes it to up to four connected machines.',
                         image: 'Distribution_Board.png',
@@ -166,7 +166,7 @@ class PrototypeScene extends Phaser.Scene {
                     }
                 ];
                 const repoMachines = Array.isArray(machines) ? machines : [];
-                const toolboxMachines = [...repoMachines, ...builtInMachines];
+                const toolboxMachines = [...builtInMachines, ...repoMachines.filter((m) => (m.defKey || m.id) !== 'distributionBoard')];
                 if (toolboxMachines.length === 0) return;
                 toolboxMachines.forEach((m) => {
                     const cat = (m.category || 'other').toString();
@@ -439,8 +439,23 @@ class PrototypeScene extends Phaser.Scene {
                         } catch (e) {}
 
                         // Group machines by category
+                        const builtInToolboxMachines = [
+                            {
+                                id: 'distributionBoard',
+                                defKey: 'distributionBoard',
+                                name: 'Power Board',
+                                category: 'infrastructure',
+                                description: 'Receives electrical power and distributes it to up to four connected machines.',
+                                image: 'Distribution_Board.png',
+                                powerRequired: 0,
+                                powerProduced: 0,
+                                footprint: [3, 2],
+                                placeable: true
+                            }
+                        ];
+                        const toolboxMachines = [...builtInToolboxMachines, ...Array.isArray(machines) ? machines.filter((m) => (m.defKey || m.id) !== 'distributionBoard') : []];
                         const groups = {};
-                        machines.forEach(m => {
+                        toolboxMachines.forEach(m => {
                             const cat = (m.category || 'other').toString();
                             groups[cat] = groups[cat] || [];
                             groups[cat].push(m);
@@ -1428,8 +1443,6 @@ PrototypeScene.prototype._getRecordCenter = function (rec) {
     return { x: cx, y: cy };
 };
 
-// Power cable creation disabled — stub
-PrototypeScene.prototype._createPowerCable = function (model) { return null; };
 // Create a power cable renderer between an external boundary and the facility
 PrototypeScene.prototype._createPowerCable = function (opts) {
     // opts: { id, start: {x,y}, end: {x,y} }
@@ -1443,29 +1456,7 @@ PrototypeScene.prototype._createPowerCable = function (opts) {
     g.beginPath(); g.moveTo(opts.start.x, opts.start.y); g.lineTo(opts.end.x, opts.end.y); g.strokePath();
     container.add(g);
 
-    // create a small lightning texture once
-    const symKey = 'lightning-symbol';
-    if (!this.textures.exists(symKey)) {
-        const sx = this.add.graphics();
-        sx.fillStyle(0xffffff, 1);
-        sx.fillTriangle(0,0, 10,6, 0,12);
-        sx.generateTexture(symKey, 10, 12);
-        sx.destroy();
-    }
-
-    // prepare moving symbols array
-    const symbols = [];
-    const count = 6;
-    for (let i=0;i<count;i++){
-        const img = this.add.image(opts.start.x, opts.start.y, symKey);
-        img.setOrigin(0.5);
-        img.setDepth(9000);
-        img.setScale(1);
-        container.add(img);
-        symbols.push(img);
-    }
-
-    return { container, graphics: g, symbols, start: opts.start, end: opts.end };
+    return { container, graphics: g, symbols: [], start: opts.start, end: opts.end };
 };
 
 // Remove power cable

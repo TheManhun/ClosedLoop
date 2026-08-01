@@ -40,19 +40,9 @@ export default class ConnectionManager {
         return 50;
     }
 
-    _getConnectionEndpoint(record, isStart) {
+    _getConnectionEndpoint(record) {
         if (!record) return null;
-        const def = this.scene._buildingDefs[record.defKey] || this.scene._buildingDefs.processUnit;
-        const gs = this.scene._gridConfig;
-        const fw = def.footprint[0];
-        const fh = def.footprint[1];
-        const center = this.scene._getRecordCenter(record);
-        const halfW = (fw * gs.minor) / 2;
-        const halfH = (fh * gs.minor) / 2;
-        const inset = Math.max(6, Math.min(10, Math.min(halfW, halfH) * 0.18));
-        const x = record.container.x + (isStart ? inset : (fw * gs.minor) - inset);
-        const y = record.container.y + (fh * gs.minor) / 2 - 6;
-        return { x, y };
+        return this.scene._getRecordCenter(record);
     }
 
     _drawBoltShape(bolt) {
@@ -80,8 +70,8 @@ export default class ConnectionManager {
         const to = this.buildingManager.getMachine(rec.targetBuildingId);
         if (!from || !to) return;
 
-        const start = this._getConnectionEndpoint(from, true) || this.scene._getRecordCenter(from);
-        const end = this._getConnectionEndpoint(to, false) || this.scene._getRecordCenter(to);
+        const start = this._getConnectionEndpoint(from) || this.scene._getRecordCenter(from);
+        const end = this._getConnectionEndpoint(to) || this.scene._getRecordCenter(to);
         renderer.start = start;
         renderer.end = end;
 
@@ -166,8 +156,8 @@ export default class ConnectionManager {
 
         // Render basic straight connection between building centres for now
         try {
-            const start = this._getConnectionEndpoint(fromRecord, true) || this.scene._getRecordCenter(fromRecord);
-            const end = this._getConnectionEndpoint(toRecord, false) || this.scene._getRecordCenter(toRecord);
+            const start = this._getConnectionEndpoint(fromRecord) || this.scene._getRecordCenter(fromRecord);
+            const end = this._getConnectionEndpoint(toRecord) || this.scene._getRecordCenter(toRecord);
             const isPowerConnection = String(def.key || def.type || '').toLowerCase() === 'power';
             let renderer = null;
             if (isPowerConnection) {
@@ -187,6 +177,8 @@ export default class ConnectionManager {
                     bolt.disableInteractive && bolt.disableInteractive();
                     bolt.input && (bolt.input.enabled = false);
                     renderer.bolts = [bolt];
+                    rec._renderer = renderer;
+                    this._setLayerDepth(renderer, def.key);
                     this._startPowerBoltAnimation(rec);
                 }
             } else {
@@ -248,8 +240,8 @@ export default class ConnectionManager {
         let closestDistance = Number.POSITIVE_INFINITY;
         for (const rec of this._connections.values()) {
             if (!rec._renderer) continue;
-            const start = this.scene._getRecordCenter(this.buildingManager.getMachine(rec.sourceBuildingId));
-            const end = this.scene._getRecordCenter(this.buildingManager.getMachine(rec.targetBuildingId));
+            const start = this._getConnectionEndpoint(this.buildingManager.getMachine(rec.sourceBuildingId)) || this.scene._getRecordCenter(this.buildingManager.getMachine(rec.sourceBuildingId));
+            const end = this._getConnectionEndpoint(this.buildingManager.getMachine(rec.targetBuildingId)) || this.scene._getRecordCenter(this.buildingManager.getMachine(rec.targetBuildingId));
             if (!start || !end) continue;
             const dx = end.x - start.x;
             const dy = end.y - start.y;
@@ -288,8 +280,8 @@ export default class ConnectionManager {
                 const from = this.buildingManager.getMachine(rec.sourceBuildingId);
                 const to = this.buildingManager.getMachine(rec.targetBuildingId);
                 if (!from || !to) continue;
-                const start = this._getConnectionEndpoint(from, true) || this.scene._getRecordCenter(from);
-                const end = this._getConnectionEndpoint(to, false) || this.scene._getRecordCenter(to);
+                const start = this._getConnectionEndpoint(from) || this.scene._getRecordCenter(from);
+                const end = this._getConnectionEndpoint(to) || this.scene._getRecordCenter(to);
                 if (rec._renderer) {
                     if (rec.type === 'power') {
                         try {
