@@ -38,6 +38,9 @@ class PrototypeScene extends Phaser.Scene {
         this.load.image('external_grid', '/electricsubstation.png');
         // Distribution board
         this.load.image('distribution_board', '/Distribution_Board.png');
+        // Gas development placeholders
+        this.load.image('biogas_tank', '/biogastank.png');
+        this.load.image('gas_generator', '/gasgenerator.png');
     }
 
     create() {
@@ -163,6 +166,30 @@ class PrototypeScene extends Phaser.Scene {
                         powerProduced: 0,
                         footprint: [3, 2],
                         placeable: true
+                    },
+                    {
+                        id: 'biogasTank',
+                        defKey: 'biogasTank',
+                        name: 'Biogas Tank',
+                        category: 'gas',
+                        description: 'Placeholder gas storage hub for the development chain.',
+                        image: 'biogastank.png',
+                        powerRequired: 0,
+                        powerProduced: 0,
+                        footprint: [2, 2],
+                        placeable: true
+                    },
+                    {
+                        id: 'gasGenerator',
+                        defKey: 'gasGenerator',
+                        name: 'Gas Generator',
+                        category: 'gas',
+                        description: 'Placeholder gas-to-power conversion unit.',
+                        image: 'gasgenerator.png',
+                        powerRequired: 0,
+                        powerProduced: 0,
+                        footprint: [2, 2],
+                        placeable: true
                     }
                 ];
                 const repoMachines = Array.isArray(machines) ? machines : [];
@@ -177,6 +204,7 @@ class PrototypeScene extends Phaser.Scene {
                     agriculture: '🌿 Agriculture',
                     process: '⚙ Processing',
                     infrastructure: '⚡ Energy',
+                    gas: '💨 Gas',
                     'electrical infrastructure': '⚡ Electrical Infrastructure',
                     manufacturing: '🏭 Manufacturing',
                     recycling: '♻ Recycling',
@@ -277,7 +305,7 @@ class PrototypeScene extends Phaser.Scene {
                         const ccard = document.createElement('div'); ccard.className='toolbox-card'; ccard.style.display='flex'; ccard.style.alignItems='center'; ccard.style.gap='12px'; ccard.style.padding='10px'; ccard.style.borderRadius='8px'; ccard.style.cursor='pointer'; ccard.style.wordBreak='break-word';
                         if (!d.enabled) ccard.classList.add('disabled');
                         const iconWrap = document.createElement('div'); iconWrap.className='toolbox-card-icon'; iconWrap.style.width='56px'; iconWrap.style.height='56px'; iconWrap.style.display='flex'; iconWrap.style.alignItems='center'; iconWrap.style.justifyContent='center'; iconWrap.style.background='#0d0f10'; iconWrap.style.borderRadius='6px';
-                        const icon = document.createElement('div'); icon.textContent = d.key === 'power' ? '⚡' : (d.key==='conveyor'?'▤':(d.key==='water'?'💧':'🔥')); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
+                        const icon = document.createElement('div'); icon.textContent = d.key === 'power' ? '⚡' : (d.key==='conveyor'?'▤':(d.key==='water'?'💧':(d.key==='gas'?'💨':'🔗'))); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
                         const txt = document.createElement('div'); txt.style.flex='1'; txt.style.minWidth='0'; const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = d.label; const sub = document.createElement('div'); sub.className='toolbox-card-category'; sub.textContent = d.comingSoon ? 'Coming soon' : d.renderer; txt.appendChild(nm); txt.appendChild(sub);
                         ccard.appendChild(iconWrap); ccard.appendChild(txt);
                         ccard.addEventListener('click', (ev)=>{
@@ -451,6 +479,30 @@ class PrototypeScene extends Phaser.Scene {
                                 powerProduced: 0,
                                 footprint: [3, 2],
                                 placeable: true
+                            },
+                            {
+                                id: 'biogasTank',
+                                defKey: 'biogasTank',
+                                name: 'Biogas Tank',
+                                category: 'gas',
+                                description: 'Placeholder gas storage hub for the development chain.',
+                                image: 'biogastank.png',
+                                powerRequired: 0,
+                                powerProduced: 0,
+                                footprint: [2, 2],
+                                placeable: true
+                            },
+                            {
+                                id: 'gasGenerator',
+                                defKey: 'gasGenerator',
+                                name: 'Gas Generator',
+                                category: 'gas',
+                                description: 'Placeholder gas-to-power conversion unit.',
+                                image: 'gasgenerator.png',
+                                powerRequired: 0,
+                                powerProduced: 0,
+                                footprint: [2, 2],
+                                placeable: true
                             }
                         ];
                         const toolboxMachines = [...builtInToolboxMachines, ...Array.isArray(machines) ? machines.filter((m) => (m.defKey || m.id) !== 'distributionBoard') : []];
@@ -467,6 +519,7 @@ class PrototypeScene extends Phaser.Scene {
                                 agriculture: '🌿 Agriculture',
                                 process: '⚙ Processing',
                                 infrastructure: '⚡ Energy',
+                                gas: '💨 Gas',
                                 manufacturing: '🏭 Manufacturing',
                                 recycling: '♻ Recycling',
                                 water: '💧 Water',
@@ -617,7 +670,7 @@ class PrototypeScene extends Phaser.Scene {
                                     const ccard = document.createElement('div'); ccard.className = 'toolbox-card'; ccard.style.display='flex'; ccard.style.alignItems='center'; ccard.style.gap='12px'; ccard.style.padding='10px'; ccard.style.borderRadius='8px'; ccard.style.cursor='pointer'; ccard.style.wordBreak='break-word';
                                     if (!d || d.enabled === false) ccard.classList.add('disabled');
                                     const iconWrap = document.createElement('div'); iconWrap.className='toolbox-card-icon'; iconWrap.style.width='56px'; iconWrap.style.height='56px'; iconWrap.style.display='flex'; iconWrap.style.alignItems='center'; iconWrap.style.justifyContent='center'; iconWrap.style.background='#0d0f10'; iconWrap.style.borderRadius='6px';
-                                    const icon = document.createElement('div'); icon.textContent = d && d.key === 'power' ? '⚡' : (d && d.key === 'conveyor' ? '▤' : (d && d.key === 'water' ? '💧' : '🔗')); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
+                                    const icon = document.createElement('div'); icon.textContent = d && d.key === 'power' ? '⚡' : (d && d.key === 'conveyor' ? '▤' : (d && d.key === 'water' ? '💧' : (d && d.key === 'gas' ? '💨' : '🔗'))); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
                                     const txt = document.createElement('div'); txt.style.flex='1'; txt.style.minWidth='0'; const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = (d && d.label) || (d && d.key) || k; const sub = document.createElement('div'); sub.className='toolbox-card-category'; sub.textContent = (d && d.renderer) || (d && d.comingSoon ? 'Coming soon' : 'Connection'); txt.appendChild(nm); txt.appendChild(sub);
                                     ccard.appendChild(iconWrap); ccard.appendChild(txt);
 

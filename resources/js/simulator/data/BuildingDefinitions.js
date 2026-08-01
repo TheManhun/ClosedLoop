@@ -112,7 +112,7 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
-                accepts: ['power', 'water'],
+                accepts: ['power', 'water', 'gas'],
                 provides: ['power'],
                 suggestedNext: []
             },
@@ -140,7 +140,7 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
-                accepts: ['power', 'water'],
+                accepts: ['power', 'water', 'gas'],
                 provides: ['power'],
                 generatesPower: false,
                 consumesPower: false,
@@ -148,6 +148,45 @@ export default class BuildingDefinitions {
                 maxInputConnections: 1,
                 maxOutputConnections: 4,
                 description: 'Receives electrical power and distributes it to up to four connected machines.',
+                suggestedNext: []
+            },
+            anaerobicDigester: {
+                name: 'Anaerobic Digester',
+                image: 'placeholder_digester',
+                category: 'process',
+                footprint: [3, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                placeable: true,
+                accepts: ['power', 'conveyor'],
+                provides: ['gas'],
+                suggestedNext: []
+            },
+            biogasTank: {
+                name: 'Biogas Tank',
+                image: 'biogas_tank',
+                category: 'storage',
+                footprint: [2, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                placeable: true,
+                accepts: ['gas'],
+                provides: ['gas'],
+                suggestedNext: []
+            },
+            gasGenerator: {
+                name: 'Gas Generator',
+                image: 'gas_generator',
+                category: 'energy',
+                footprint: [2, 2],
+                permanent: false,
+                deletable: true,
+                movable: true,
+                placeable: true,
+                accepts: ['gas'],
+                provides: ['power'],
                 suggestedNext: []
             },
             externalGrid: {

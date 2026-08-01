@@ -93,8 +93,9 @@ export default class ConnectionController {
         const start = this.scene._getRecordCenter(this._source);
         const end = { x: world.x, y: world.y };
         const valid = true; // cannot validate until target selected; show neutral green
-        const color = valid ? (this._def && this._def.key === 'water' ? 0x3b82f6 : 0x10b981) : 0xff0000;
-        this._previewGraphics.lineStyle(this._def && this._def.key === 'water' ? 5 : 4, color, 0.9);
+        const connectionKey = this._def && this._def.key ? String(this._def.key).toLowerCase() : '';
+        const color = valid ? (connectionKey === 'water' ? 0x3b82f6 : (connectionKey === 'gas' ? 0x14b8a6 : 0x10b981)) : 0xff0000;
+        this._previewGraphics.lineStyle(connectionKey === 'water' ? 5 : 4, color, 0.9);
         this._previewGraphics.beginPath(); this._previewGraphics.moveTo(start.x, start.y); this._previewGraphics.lineTo(end.x, end.y); this._previewGraphics.strokePath();
     }
 

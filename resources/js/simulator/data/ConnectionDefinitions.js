@@ -31,7 +31,7 @@ export default {
         resourceCategories: ['gas'],
         bidirectional: false,
         renderer: 'gas',
-        enabled: false,
-        comingSoon: true
+        enabled: true,
+        comingSoon: false
     }
 };
