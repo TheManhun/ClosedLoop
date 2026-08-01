@@ -57,6 +57,22 @@ export default class ConnectionManager {
         return this.scene._getRecordCenter(record);
     }
 
+    _createSceneContainer() {
+        const add = this.scene && this.scene.add;
+        if (!add) return null;
+        if (typeof add.container === 'function') return add.container();
+        if (typeof add === 'function') return add();
+        return null;
+    }
+
+    _createSceneGraphics() {
+        const add = this.scene && this.scene.add;
+        if (!add) return null;
+        if (typeof add.graphics === 'function') return add.graphics();
+        if (typeof add === 'function') return add();
+        return null;
+    }
+
     _getLineStyle(connectionType) {
         const type = String(connectionType || '').toLowerCase();
         if (type === 'water') return { width: 5, color: 0x3b82f6, alpha: 1 };
@@ -101,6 +117,62 @@ export default class ConnectionManager {
         return metadata;
     }
 
+    _getFlowIndicatorItemCount(connection) {
+        const type = String(connection && connection.type ? connection.type : '').toLowerCase();
+        if (type === 'conveyor') return 3;
+        return 1;
+    }
+
+    _getConnectionResourceIcon(connection) {
+        const candidates = [
+            connection && connection.resourceIcon,
+            connection && connection.metadata && connection.metadata.resourceIcon,
+            connection && connection.icon,
+            connection && connection.resourceKey,
+            connection && connection.resourceName
+        ];
+
+        const icon = candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+        if (icon) return String(icon).toLowerCase();
+
+        const type = String(connection && connection.type ? connection.type : '').toLowerCase();
+        return type === 'conveyor' ? 'crate' : null;
+    }
+
+    _getConveyorItemStyle(connection) {
+        if (!connection) return { size: 8, color: 0x6b7280, shape: 'crate' };
+
+        const metadata = this._getFlowIndicatorMetadata(connection);
+        const identity = [metadata.resourceKey, metadata.resourceName, metadata.resourceIcon].find((value) => typeof value === 'string' && value.trim().length > 0);
+        const text = identity ? String(identity).toLowerCase() : '';
+
+        if (/plastic|pellet|flake/.test(text)) {
+            return { size: 5, color: 0x60a5fa, shape: 'pellet' };
+        }
+
+        if (/tyre|tire|rubber/.test(text)) {
+            return { size: 6, color: 0x111827, shape: 'ring' };
+        }
+
+        if (/glass|pane|bottle/.test(text)) {
+            return { size: 6, color: 0xcbd5e1, shape: 'diamond' };
+        }
+
+        if (/battery|cell|powercell/.test(text)) {
+            return { size: 6, color: 0x1f2937, shape: 'battery' };
+        }
+
+        if (/municipal|waste|garbage|trash/.test(text)) {
+            return { size: 7, color: 0x4b5563, shape: 'bundle' };
+        }
+
+        if (/farm|biomass|organic|feed|compost/.test(text)) {
+            return { size: 7, color: 0x6b8f3d, shape: 'bundle' };
+        }
+
+        return { size: 8, color: 0x6b7280, shape: 'crate' };
+    }
+
     _getFlowIndicatorStyle(connection) {
         if (!connection) return null;
 
@@ -109,11 +181,11 @@ export default class ConnectionManager {
         const text = identity ? String(identity).toLowerCase() : '';
 
         if (/wastewater|sewer|sewage|effluent|greywater/.test(text)) {
-            return { size: 9, color: 0x7c2d12 };
+            return { size: 9, color: 0x7c2d12, shape: 'droplet' };
         }
 
         if (/treated|recycled|purified/.test(text)) {
-            return { size: 9, color: 0x7dd3fc };
+            return { size: 9, color: 0x7dd3fc, shape: 'droplet' };
         }
 
         const type = String(connection.type || '').toLowerCase();
@@ -126,9 +198,18 @@ export default class ConnectionManager {
             else if (state === 'blocked') color = 0x7f1d1d;
             else if (state === 'fault') color = 0xdc2626;
             else color = 0x3b82f6;
+            return { size: 9, color, shape: 'droplet' };
         }
 
-        return { size: 9, color };
+        if (type === 'gas') {
+            return { size: 9, color: 0xfacc15, shape: 'bubble-cluster' };
+        }
+
+        if (type === 'conveyor') {
+            return this._getConveyorItemStyle(connection);
+        }
+
+        return { size: 9, color, shape: 'droplet' };
     }
 
     _destroyFlowIndicator(renderer) {
@@ -166,30 +247,61 @@ export default class ConnectionManager {
         const style = this._getFlowIndicatorStyle(connection);
         if (!style) return null;
 
-        const container = this.scene.add.container(0, 0);
-        container.setDepth(1100);
-        container.setScrollFactor(1);
-        container.disableInteractive && container.disableInteractive();
-        if (container.input) container.input.enabled = false;
+        const items = [];
+        const itemCount = this._getFlowIndicatorItemCount(connection);
 
-        const graphics = this.scene.add.graphics();
-        graphics.setDepth(1100);
-        graphics.setScrollFactor(1);
-        graphics.disableInteractive && graphics.disableInteractive();
-        if (graphics.input) graphics.input.enabled = false;
-        container.add(graphics);
+        for (let index = 0; index < itemCount; index += 1) {
+            const container = this._createSceneContainer();
+            if (!container) return null;
+            container.setDepth(1100);
+            container.setScrollFactor(1);
+            container.disableInteractive && container.disableInteractive();
+            if (container.input) container.input.enabled = false;
 
-        const item = { container, graphics, size: style.size, color: style.color, tween: null, lastStart: null, lastEnd: null, anchorX: 0, anchorY: 0 };
+            const graphics = this._createSceneGraphics();
+            if (!graphics) return null;
+            graphics.setDepth(1100);
+            graphics.setScrollFactor(1);
+            graphics.disableInteractive && graphics.disableInteractive();
+            if (graphics.input) graphics.input.enabled = false;
+            container.add(graphics);
+
+            items.push({
+                container,
+                graphics,
+                size: style.size,
+                color: style.color,
+                resourceIcon: this._getConnectionResourceIcon(connection),
+                tween: null,
+                lastStart: null,
+                lastEnd: null,
+                anchorX: 0,
+                anchorY: 0
+            });
+        }
+
         const flowIndicator = {
-            items: [item],
-            container,
-            graphics,
+            items,
+            container: items[0] ? items[0].container : null,
+            graphics: items[0] ? items[0].graphics : null,
             metadata: this._getFlowIndicatorMetadata(connection),
-            rendererKey: String(connection.type || '').toLowerCase() || 'generic'
+            rendererKey: String(connection.type || '').toLowerCase() || 'generic',
+            setPosition(x, y) {
+                items.forEach((item) => {
+                    try {
+                        if (item && item.container) item.container.setPosition(x, y);
+                    } catch (e) {}
+                });
+            }
         };
 
         renderer.flowIndicator = flowIndicator;
         connection.flowMetadata = flowIndicator.metadata;
+        flowIndicator.items.forEach((entry) => {
+            if (entry) {
+                entry.resourceStyle = style;
+            }
+        });
         if (!Number.isFinite(connection.flowProgress)) {
             connection.flowProgress = 0;
         }
@@ -201,13 +313,15 @@ export default class ConnectionManager {
         if (!renderer) return null;
         if (renderer.gasIndicator && renderer.gasIndicator.container) return renderer.gasIndicator;
 
-        const container = this.scene.add.container(0, 0);
+        const container = this._createSceneContainer();
+        if (!container) return null;
         container.setDepth(1100);
         container.setScrollFactor(1);
         container.disableInteractive && container.disableInteractive();
         if (container.input) container.input.enabled = false;
 
-        const graphics = this.scene.add.graphics();
+        const graphics = this._createSceneGraphics();
+        if (!graphics) return null;
         graphics.setDepth(1100);
         graphics.setScrollFactor(1);
         graphics.disableInteractive && graphics.disableInteractive();
@@ -489,51 +603,162 @@ export default class ConnectionManager {
 
         const style = this._getFlowIndicatorStyle(connection);
         if (!style) {
-            item.container.setVisible(false);
+            indicator.items.forEach((entry) => {
+                if (entry && entry.container) entry.container.setVisible(false);
+            });
             return;
         }
 
         indicator.metadata = this._getFlowIndicatorMetadata(connection);
         connection.flowMetadata = indicator.metadata;
+        indicator.items.forEach((entry) => {
+            if (entry) {
+                entry.resourceStyle = style;
+            }
+        });
 
         const indicatorType = String(connection.type || '').toLowerCase();
-        const isWater = indicatorType === 'water';
-        if (isWater && item.container) {
-            item.container.setVisible(true);
-            if (item.tween && item.tween.isPlaying()) {
-                const x = item.container.x;
-                const y = item.container.y;
-                item.container.setPosition(x, y);
-            } else {
-                const progress = Number.isFinite(connection.flowProgress) ? connection.flowProgress : 0;
-                const x = start.x + (end.x - start.x) * progress;
-                const y = start.y + (end.y - start.y) * progress;
-                item.container.setPosition(x, y);
+        const progress = Number.isFinite(connection.flowProgress) ? connection.flowProgress : 0;
+        const baseX = start.x;
+        const baseY = start.y;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const count = Math.max(1, indicator.items.length);
+
+        indicator.items.forEach((entry, index) => {
+            if (!entry || !entry.container) return;
+            const offset = count === 1 ? 0 : index / count;
+            const itemProgress = (progress + offset) % 1;
+            const x = baseX + dx * itemProgress;
+            const y = baseY + dy * itemProgress;
+            entry.container.setVisible(true);
+            entry.container.setPosition(x, y);
+
+            if (entry.graphics) {
+                entry.graphics.setVisible(true);
             }
-        } else {
-            const progress = Number.isFinite(connection.flowProgress) ? connection.flowProgress : 0;
-            const x = start.x + (end.x - start.x) * progress;
-            const y = start.y + (end.y - start.y) * progress;
-            if (item.container) {
-                item.container.setVisible(true);
-                item.container.setPosition(x, y);
+            if (entry.graphics) {
+                entry.graphics.clear();
+                entry.graphics.lineStyle(0);
+                entry.graphics.fillStyle(style.color, 1);
+                if (indicatorType === 'conveyor') {
+                    const size = style.size || 8;
+                    const shape = style.shape || 'crate';
+                    if (shape === 'pellet') {
+                        entry.graphics.beginPath();
+                        entry.graphics.fillCircle(0, 0, size * 0.42);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                        entry.graphics.fillStyle(0xdbeafe, 0.9);
+                        entry.graphics.beginPath();
+                        entry.graphics.fillCircle(-size * 0.12, -size * 0.08, size * 0.14);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                    } else if (shape === 'ring') {
+                        entry.graphics.lineStyle(1.2, 0x111827, 0.95);
+                        entry.graphics.beginPath();
+                        entry.graphics.fillCircle(0, 0, size * 0.42);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                        entry.graphics.lineStyle(1.2, 0x111827, 0.95);
+                        entry.graphics.beginPath();
+                        entry.graphics.strokeCircle(0, 0, size * 0.42);
+                        entry.graphics.closePath();
+                        entry.graphics.strokePath();
+                    } else if (shape === 'diamond') {
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(0, -size * 0.46);
+                        entry.graphics.lineTo(size * 0.36, 0);
+                        entry.graphics.lineTo(0, size * 0.46);
+                        entry.graphics.lineTo(-size * 0.36, 0);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                    } else if (shape === 'battery') {
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.34, -size * 0.24);
+                        entry.graphics.lineTo(size * 0.34, -size * 0.24);
+                        entry.graphics.lineTo(size * 0.34, size * 0.24);
+                        entry.graphics.lineTo(-size * 0.34, size * 0.24);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                        entry.graphics.fillStyle(0x9ca3af, 0.8);
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.18, -size * 0.16);
+                        entry.graphics.lineTo(size * 0.18, -size * 0.16);
+                        entry.graphics.lineTo(size * 0.18, size * 0.16);
+                        entry.graphics.lineTo(-size * 0.18, size * 0.16);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                    } else if (shape === 'bundle') {
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.28, -size * 0.2);
+                        entry.graphics.lineTo(size * 0.12, -size * 0.3);
+                        entry.graphics.lineTo(size * 0.32, -size * 0.06);
+                        entry.graphics.lineTo(size * 0.08, size * 0.3);
+                        entry.graphics.lineTo(-size * 0.32, size * 0.21);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                        entry.graphics.fillStyle(0x111827, 0.4);
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.2, -size * 0.06);
+                        entry.graphics.lineTo(size * 0.02, -size * 0.14);
+                        entry.graphics.lineTo(size * 0.18, size * 0.02);
+                        entry.graphics.lineTo(0, size * 0.12);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                    } else {
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.45, -size * 0.3);
+                        entry.graphics.lineTo(size * 0.45, -size * 0.3);
+                        entry.graphics.lineTo(size * 0.45, size * 0.2);
+                        entry.graphics.lineTo(size * 0.2, size * 0.4);
+                        entry.graphics.lineTo(-size * 0.2, size * 0.4);
+                        entry.graphics.lineTo(-size * 0.45, size * 0.2);
+                        entry.graphics.closePath();
+                        entry.graphics.fillPath();
+                        entry.graphics.lineStyle(1.2, 0x111827, 0.85);
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.45, -size * 0.3);
+                        entry.graphics.lineTo(size * 0.45, -size * 0.3);
+                        entry.graphics.lineTo(size * 0.45, size * 0.2);
+                        entry.graphics.lineTo(size * 0.2, size * 0.4);
+                        entry.graphics.lineTo(-size * 0.2, size * 0.4);
+                        entry.graphics.lineTo(-size * 0.45, size * 0.2);
+                        entry.graphics.closePath();
+                        entry.graphics.strokePath();
+                        entry.graphics.lineStyle(1, 0xe5e7eb, 0.8);
+                        entry.graphics.beginPath();
+                        entry.graphics.moveTo(-size * 0.18, -size * 0.12);
+                        entry.graphics.lineTo(size * 0.18, -size * 0.12);
+                        entry.graphics.lineTo(size * 0.18, size * 0.04);
+                        entry.graphics.lineTo(-size * 0.18, size * 0.04);
+                        entry.graphics.closePath();
+                        entry.graphics.strokePath();
+                    }
+                } else if (indicatorType === 'gas') {
+                    const radius = style.size * 0.45;
+                    entry.graphics.beginPath();
+                    entry.graphics.fillCircle(0, 0, radius);
+                    entry.graphics.closePath();
+                    entry.graphics.fillPath();
+                    entry.graphics.fillStyle(0xffffff, 0.65);
+                    entry.graphics.beginPath();
+                    entry.graphics.fillCircle(-radius * 0.3, -radius * 0.3, radius * 0.25);
+                    entry.graphics.closePath();
+                    entry.graphics.fillPath();
+                } else {
+                    entry.graphics.beginPath();
+                    entry.graphics.moveTo(0, -style.size * 0.7);
+                    entry.graphics.lineTo(style.size * 0.5, -style.size * 0.1);
+                    entry.graphics.lineTo(style.size * 0.25, style.size * 0.55);
+                    entry.graphics.lineTo(0, style.size * 0.75);
+                    entry.graphics.lineTo(-style.size * 0.25, style.size * 0.55);
+                    entry.graphics.lineTo(-style.size * 0.5, -style.size * 0.1);
+                    entry.graphics.closePath();
+                    entry.graphics.fillPath();
+                }
             }
-        }
-        if (item.graphics) {
-            item.graphics.setVisible(true);
-        }
-        item.graphics.clear();
-        item.graphics.lineStyle(0);
-        item.graphics.fillStyle(style.color, 1);
-        item.graphics.beginPath();
-        item.graphics.moveTo(0, -style.size * 0.7);
-        item.graphics.lineTo(style.size * 0.5, -style.size * 0.1);
-        item.graphics.lineTo(style.size * 0.25, style.size * 0.55);
-        item.graphics.lineTo(0, style.size * 0.75);
-        item.graphics.lineTo(-style.size * 0.25, style.size * 0.55);
-        item.graphics.lineTo(-style.size * 0.5, -style.size * 0.1);
-        item.graphics.closePath();
-        item.graphics.fillPath();
+        });
     }
 
     _drawBoltShape(bolt) {
@@ -620,6 +845,104 @@ export default class ConnectionManager {
         });
     }
 
+    _getConveyorRailLayout(start, end) {
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.hypot(dx, dy) || 1;
+        const directionX = dx / length;
+        const directionY = dy / length;
+        const perpendicularX = -directionY;
+        const perpendicularY = directionX;
+        const railOffset = 7;
+        const supportSpacing = 24;
+
+        const railAStart = { x: start.x + perpendicularX * railOffset, y: start.y + perpendicularY * railOffset };
+        const railBStart = { x: start.x - perpendicularX * railOffset, y: start.y - perpendicularY * railOffset };
+        const railAEnd = { x: end.x + perpendicularX * railOffset, y: end.y + perpendicularY * railOffset };
+        const railBEnd = { x: end.x - perpendicularX * railOffset, y: end.y - perpendicularY * railOffset };
+
+        const supportCount = Math.max(1, Math.floor(length / supportSpacing));
+        const supports = [];
+        for (let index = 0; index <= supportCount; index += 1) {
+            const t = index / Math.max(1, supportCount);
+            supports.push({
+                x: start.x + dx * t,
+                y: start.y + dy * t,
+                halfWidth: 4,
+                normalX: perpendicularX,
+                normalY: perpendicularY
+            });
+        }
+
+        const tieDistance = 18;
+        const ties = [];
+        const tieCount = Math.max(1, Math.floor(length / tieDistance));
+        for (let index = 0; index <= tieCount; index += 1) {
+            const t = index / Math.max(1, tieCount);
+            const x = start.x + dx * t;
+            const y = start.y + dy * t;
+            ties.push({
+                start: { x: x - perpendicularX * 3.5, y: y - perpendicularY * 3.5 },
+                end: { x: x + perpendicularX * 3.5, y: y + perpendicularY * 3.5 }
+            });
+        }
+
+        return {
+            railAStart,
+            railBStart,
+            railAEnd,
+            railBEnd,
+            supports,
+            ties
+        };
+    }
+
+    _drawConveyorRails(connection, start, end) {
+        const renderer = connection && connection._renderer;
+        const graphics = renderer && renderer.graphics;
+        if (!renderer || !graphics || !start || !end) return;
+
+        const layout = this._getConveyorRailLayout(start, end);
+        const railWidth = 2.2;
+
+        graphics.clear();
+        graphics.lineStyle(railWidth, 0x374151, 1);
+        graphics.beginPath();
+        graphics.moveTo(layout.railAStart.x, layout.railAStart.y);
+        graphics.lineTo(layout.railAEnd.x, layout.railAEnd.y);
+        graphics.strokePath();
+        graphics.beginPath();
+        graphics.moveTo(layout.railBStart.x, layout.railBStart.y);
+        graphics.lineTo(layout.railBEnd.x, layout.railBEnd.y);
+        graphics.strokePath();
+
+        graphics.lineStyle(1.2, 0xe5e7eb, 0.85);
+        graphics.beginPath();
+        graphics.moveTo(layout.railAStart.x, layout.railAStart.y);
+        graphics.lineTo(layout.railAEnd.x, layout.railAEnd.y);
+        graphics.strokePath();
+        graphics.beginPath();
+        graphics.moveTo(layout.railBStart.x, layout.railBStart.y);
+        graphics.lineTo(layout.railBEnd.x, layout.railBEnd.y);
+        graphics.strokePath();
+
+        layout.ties.forEach((tie) => {
+            graphics.lineStyle(1.1, 0x6b7280, 0.95);
+            graphics.beginPath();
+            graphics.moveTo(tie.start.x, tie.start.y);
+            graphics.lineTo(tie.end.x, tie.end.y);
+            graphics.strokePath();
+        });
+
+        layout.supports.forEach((support) => {
+            graphics.lineStyle(1.4, 0x4b5563, 0.9);
+            graphics.beginPath();
+            graphics.moveTo(support.x - support.normalX * support.halfWidth, support.y - support.normalY * support.halfWidth);
+            graphics.lineTo(support.x + support.normalX * support.halfWidth, support.y + support.normalY * support.halfWidth);
+            graphics.strokePath();
+        });
+    }
+
     createConnection(def, fromRecord, toRecord, opts = {}) {
         // def: connection definition (from ConnectionDefinitions)
         if (!def || !fromRecord || !toRecord) return null;
@@ -646,49 +969,61 @@ export default class ConnectionManager {
             pressure: opts.pressure ?? opts.pressureBar ?? null,
             quality: opts.quality ?? null,
             state: opts.state ?? 'normal',
+            resourceIcon: opts.resourceIcon ?? (String(def.key || def.type || '').toLowerCase() === 'conveyor' ? 'crate' : null),
             status: 'active',
             active: true,
             flowProgress: Number.isFinite(opts.flowProgress) ? opts.flowProgress : 0,
             _renderer: null
         };
 
-        // Render basic straight connection between building centres for now
         try {
             const start = this._getConnectionEndpoint(fromRecord) || this.scene._getRecordCenter(fromRecord);
             const end = this._getConnectionEndpoint(toRecord) || this.scene._getRecordCenter(toRecord);
             const isPowerConnection = String(def.key || def.type || '').toLowerCase() === 'power';
             let renderer = null;
+
             if (isPowerConnection) {
-                // Use the scene power cable primitive for visuals
                 renderer = this.scene._createPowerCable({ id, start, end, includeSymbols: false });
                 if (renderer && renderer.container) {
                     renderer.container.setDepth(this._getConnectionDepth(def.key));
                     renderer.container.setScrollFactor(1);
                     renderer.container.disableInteractive && renderer.container.disableInteractive();
                     renderer.container.input && (renderer.container.input.enabled = false);
-                    const bolt = this.scene.add.graphics();
-                    bolt.setPosition(start.x, start.y);
-                    bolt.setDepth(1100);
-                    bolt.setVisible(false);
-                    bolt.setScrollFactor(1);
-                    bolt.setAlpha(1);
-                    bolt.disableInteractive && bolt.disableInteractive();
-                    bolt.input && (bolt.input.enabled = false);
-                    renderer.bolts = [bolt];
+
+                    const bolt = this._createSceneGraphics();
+                    if (bolt) {
+                        bolt.setPosition(start.x, start.y);
+                        bolt.setDepth(1100);
+                        bolt.setVisible(false);
+                        bolt.setScrollFactor(1);
+                        bolt.setAlpha(1);
+                        bolt.disableInteractive && bolt.disableInteractive();
+                        bolt.input && (bolt.input.enabled = false);
+                        renderer.bolts = [bolt];
+                    }
+
                     rec._renderer = renderer;
                     this._setLayerDepth(renderer, def.key);
                     this._startPowerBoltAnimation(rec);
                 }
             } else {
                 const style = this._getLineStyle(def.key);
-                const g = this.scene.add.graphics();
-                g.setDepth(this._getConnectionDepth(def.key));
-                g.disableInteractive && g.disableInteractive();
-                g.input && (g.input.enabled = false);
-                g.lineStyle(style.width, style.color, style.alpha);
-                g.beginPath(); g.moveTo(start.x, start.y); g.lineTo(end.x, end.y); g.strokePath();
-                renderer = { graphics: g, start, end };
+                const g = this._createSceneGraphics();
+                if (g) {
+                    g.setDepth(this._getConnectionDepth(def.key));
+                    g.disableInteractive && g.disableInteractive();
+                    g.input && (g.input.enabled = false);
+                    renderer = { graphics: g, start, end };
+                    rec._renderer = renderer;
+                    if (String(def.key || def.type || '').toLowerCase() === 'conveyor') {
+                        this._drawConveyorRails(rec, start, end);
+                    } else {
+                        g.lineStyle(style.width, style.color, style.alpha);
+                        g.beginPath(); g.moveTo(start.x, start.y); g.lineTo(end.x, end.y); g.strokePath();
+                    }
+                }
             }
+
             rec._renderer = renderer;
             const indicatorType = String(def.key || def.type || '').toLowerCase();
             if (indicatorType === 'water' || indicatorType === 'conveyor') {
@@ -818,9 +1153,13 @@ export default class ConnectionManager {
                     } else if (rec._renderer.graphics) {
                         try {
                             rec._renderer.graphics.clear();
-                            const style = this._getLineStyle(rec.type);
-                            rec._renderer.graphics.lineStyle(style.width, style.color, style.alpha);
-                            rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
+                            if (String(rec.type || '').toLowerCase() === 'conveyor') {
+                                this._drawConveyorRails(rec, start, end);
+                            } else {
+                                const style = this._getLineStyle(rec.type);
+                                rec._renderer.graphics.lineStyle(style.width, style.color, style.alpha);
+                                rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
+                            }
                             rec._renderer.start = start; rec._renderer.end = end;
                         } catch (e) {}
                     }

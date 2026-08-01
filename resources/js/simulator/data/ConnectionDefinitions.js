@@ -13,8 +13,8 @@ export default {
         resourceCategories: ['solid'],
         bidirectional: false,
         renderer: 'conveyor',
-        enabled: false,
-        comingSoon: true
+        enabled: true,
+        comingSoon: false
     },
     water: {
         key: 'water',
