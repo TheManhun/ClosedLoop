@@ -1333,7 +1333,7 @@ PrototypeScene.prototype._isMachinePowerActive = function (record) {
 
 PrototypeScene.prototype._refreshPowerBalance = function () {
     const container = document.getElementById('power-balance-summary');
-    if (!container) return;
+    const statusBar = document.getElementById('simulator-status-bar');
 
     const placed = Array.isArray(this._buildingManager && this._buildingManager.getPlacedMachines) ? this._buildingManager.getPlacedMachines() : [];
     let totalDemand = 0;
@@ -1396,6 +1396,23 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
     const gridExport = Math.max(0, totalGeneration - totalDemand);
     const netPower = totalGeneration - totalDemand;
     const selfSufficiency = totalDemand > 0 ? (totalGeneration / totalDemand) * 100 : 100;
+    const powerTone = netPower > 0 ? 'positive' : (netPower < 0 ? 'negative' : 'neutral');
+    const powerValueText = `${netPower > 0 ? '+' : ''}${formatValue(netPower).replace(' MW', ' MW')}`;
+    const gridFlowText = gridExport > 0 ? `Export ${formatValue(gridExport).replace(' MW', ' MW')}` : (gridImport > 0 ? `Import ${formatValue(gridImport).replace(' MW', ' MW')}` : 'Balanced');
+
+    this._latestPowerMetrics = {
+        totalGeneration,
+        totalDemand,
+        gridImport,
+        gridExport,
+        netPower,
+        selfSufficiency,
+        powerTone,
+        powerValueText,
+        gridFlowText,
+        statusLabel,
+        statusClass
+    };
 
     const formatValue = (value) => {
         if (!Number.isFinite(value)) return '0';
@@ -1413,24 +1430,43 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
     const statusLabel = netPower > 0 ? 'Surplus' : (netPower < 0 ? 'Deficit' : 'Balanced');
     const statusClass = netPower > 0 ? 'surplus' : (netPower < 0 ? 'deficit' : 'balanced');
 
-    container.innerHTML = [
-        '<div class="power-balance-card">',
-        '<div class="power-balance-title">POWER BALANCE</div>',
-        `<div class="power-balance-status ${statusClass}">${statusLabel}</div>`,
-        '<div class="power-balance-metrics">',
-        `<div class="metric-row"><span>Internal generation</span><strong>${formatValue(totalGeneration)}</strong></div>`,
-        `<div class="metric-row"><span>Machine demand</span><strong>${formatValue(totalDemand)}</strong></div>`,
-        `<div class="metric-row"><span>Grid import</span><strong>${formatValue(gridImport)}</strong></div>`,
-        `<div class="metric-row"><span>Grid export</span><strong>${formatValue(gridExport)}</strong></div>`,
-        `<div class="metric-row"><span>Net power</span><strong>${netPower > 0 ? '+' : ''}${formatValue(netPower).replace(' MW', ' MW')}</strong></div>`,
-        `<div class="metric-row"><span>Self-sufficiency</span><strong>${totalDemand > 0 ? formatPercent(selfSufficiency) : 'No demand'}</strong></div>`,
-        '</div>',
-        '<div class="power-balance-bars">',
-        `<div class="bar-row"><span>Internal generation</span><div class="bar-track"><div class="bar-fill generation" style="width:${generationPct}%"></div></div><em>${formatValue(totalGeneration)}</em></div>`,
-        `<div class="bar-row"><span>Machine demand</span><div class="bar-track"><div class="bar-fill demand" style="width:${demandPct}%"></div></div><em>${formatValue(totalDemand)}</em></div>`,
-        '</div>',
-        '</div>'
-    ].join('');
+    if (container) {
+        container.innerHTML = [
+            '<div class="power-balance-card">',
+            '<div class="power-balance-title">POWER BALANCE</div>',
+            `<div class="power-balance-status ${statusClass}">${statusLabel}</div>`,
+            '<div class="power-balance-metrics">',
+            `<div class="metric-row"><span>Internal generation</span><strong>${formatValue(totalGeneration)}</strong></div>`,
+            `<div class="metric-row"><span>Machine demand</span><strong>${formatValue(totalDemand)}</strong></div>`,
+            `<div class="metric-row"><span>Grid import</span><strong>${formatValue(gridImport)}</strong></div>`,
+            `<div class="metric-row"><span>Grid export</span><strong>${formatValue(gridExport)}</strong></div>`,
+            `<div class="metric-row"><span>Net power</span><strong>${netPower > 0 ? '+' : ''}${formatValue(netPower).replace(' MW', ' MW')}</strong></div>`,
+            `<div class="metric-row"><span>Self-sufficiency</span><strong>${totalDemand > 0 ? formatPercent(selfSufficiency) : 'No demand'}</strong></div>`,
+            '</div>',
+            '<div class="power-balance-bars">',
+            `<div class="bar-row"><span>Internal generation</span><div class="bar-track"><div class="bar-fill generation" style="width:${generationPct}%"></div></div><em>${formatValue(totalGeneration)}</em></div>`,
+            `<div class="bar-row"><span>Machine demand</span><div class="bar-track"><div class="bar-fill demand" style="width:${demandPct}%"></div></div><em>${formatValue(totalDemand)}</em></div>`,
+            '</div>',
+            '</div>'
+        ].join('');
+    }
+
+    if (statusBar) {
+        const metrics = this._latestPowerMetrics || {};
+        const powerText = metrics.powerValueText || '0 MW';
+        const powerTone = metrics.powerTone || 'neutral';
+        const gridFlowText = metrics.gridFlowText || 'Balanced';
+        statusBar.innerHTML = [
+            `<button type="button" class="simulator-status-pill is-interactive" data-tone="${powerTone}" data-metric="power"><span class="simulator-status-label">Power</span><span class="simulator-status-value">${powerText}</span></button>`,
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="water"><span class="simulator-status-label">Water</span><span class="simulator-status-value">—</span></button>',
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="heat"><span class="simulator-status-label">Heat</span><span class="simulator-status-value">—</span></button>',
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="waste"><span class="simulator-status-label">Waste</span><span class="simulator-status-value">—</span></button>',
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="build-cost"><span class="simulator-status-label">Build Cost</span><span class="simulator-status-value">—</span></button>',
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="income"><span class="simulator-status-label">Annual Income</span><span class="simulator-status-value">—</span></button>',
+            `<button type="button" class="simulator-status-pill is-interactive" data-tone="${gridFlowText === 'Balanced' ? 'neutral' : (gridFlowText.startsWith('Export') ? 'positive' : 'warning')}" data-metric="grid-flow"><span class="simulator-status-label">Grid Flow</span><span class="simulator-status-value">${gridFlowText}</span></button>`,
+            '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="efficiency"><span class="simulator-status-label">Efficiency</span><span class="simulator-status-value">—</span></button>'
+        ].join('');
+    }
 };
 
 PrototypeScene.prototype._getRecordCenter = function (rec) {
@@ -1561,6 +1597,176 @@ new Phaser.Game(config);
 
 // Unresolved outputs donut chart renderer (independent from Phaser)
 (function () {
+    const statusPopover = document.getElementById('simulator-status-popover');
+    const resourcePopover = document.getElementById('resource-wheel-popover');
+    const resourceToggle = document.getElementById('resource-wheel-toggle');
+    const statusBar = document.getElementById('simulator-status-bar');
+    let activePopover = null;
+
+    function closePopover(name) {
+        if (name === 'power') {
+            if (statusPopover) {
+                statusPopover.hidden = true;
+                statusPopover.style.display = 'none';
+            }
+        }
+        if (name === 'resource') {
+            if (resourcePopover) {
+                resourcePopover.hidden = true;
+                resourcePopover.style.display = 'none';
+            }
+            if (resourceToggle) {
+                resourceToggle.setAttribute('aria-expanded', 'false');
+            }
+        }
+        if (!name) {
+            if (statusPopover) {
+                statusPopover.hidden = true;
+                statusPopover.style.display = 'none';
+            }
+            if (resourcePopover) {
+                resourcePopover.hidden = true;
+                resourcePopover.style.display = 'none';
+            }
+            if (resourceToggle) {
+                resourceToggle.setAttribute('aria-expanded', 'false');
+            }
+        }
+        if (activePopover === name || !name) {
+            activePopover = null;
+        }
+    }
+
+    function openPowerPopover() {
+        if (!statusPopover) return;
+        const scene = window.__simulatorScene;
+        const metrics = scene && scene._latestPowerMetrics ? scene._latestPowerMetrics : {};
+        const rows = [
+            { label: 'Internal generation', value: `${metrics.totalGeneration != null ? metrics.totalGeneration.toFixed(metrics.totalGeneration >= 100 ? 0 : 1) : '0'} MW` },
+            { label: 'Machine demand', value: `${metrics.totalDemand != null ? metrics.totalDemand.toFixed(metrics.totalDemand >= 100 ? 0 : 1) : '0'} MW` },
+            { label: 'Grid import', value: `${metrics.gridImport != null ? metrics.gridImport.toFixed(metrics.gridImport >= 100 ? 0 : 1) : '0'} MW` },
+            { label: 'Grid export', value: `${metrics.gridExport != null ? metrics.gridExport.toFixed(metrics.gridExport >= 100 ? 0 : 1) : '0'} MW` },
+            { label: 'Net power', value: `${metrics.netPower != null ? (metrics.netPower > 0 ? '+' : '') + metrics.netPower.toFixed(metrics.netPower >= 100 || metrics.netPower <= -100 ? 0 : 1) : '0'} MW` },
+            { label: 'Self-sufficiency', value: metrics.selfSufficiency != null ? `${Math.round(metrics.selfSufficiency)}%` : '—' }
+        ];
+        const badgeText = metrics.statusLabel || 'Balanced';
+        const badgeClass = (metrics.statusClass || 'balanced').toLowerCase();
+        statusPopover.innerHTML = [
+            '<div class="power-balance-card">',
+            '<div class="power-balance-title">POWER BALANCE</div>',
+            `<div class="power-balance-status ${badgeClass}">${badgeText}</div>`,
+            '<div class="power-balance-metrics">',
+            ...rows.map((row) => `<div class="metric-row"><span>${row.label}</span><strong>${row.value}</strong></div>`),
+            '</div>',
+            '</div>'
+        ].join('');
+        statusPopover.hidden = false;
+        statusPopover.style.display = 'block';
+        activePopover = 'power';
+        closePopover('resource');
+        const powerButton = statusBar && statusBar.querySelector('[data-metric="power"]');
+        if (powerButton) {
+            const rect = powerButton.getBoundingClientRect();
+            const containerRect = statusBar.getBoundingClientRect();
+            statusPopover.style.left = `${Math.max(0, rect.left - containerRect.left)}px`;
+            statusPopover.style.top = `${Math.max(10, rect.bottom - containerRect.top + 8)}px`;
+        }
+    }
+
+    function togglePowerPopover() {
+        if (activePopover === 'power') {
+            closePopover('power');
+            return;
+        }
+        openPowerPopover();
+    }
+
+    function toggleResourcePopover() {
+        if (activePopover === 'resource') {
+            closePopover('resource');
+            return;
+        }
+        if (resourcePopover) {
+            resourcePopover.hidden = false;
+            resourcePopover.style.display = 'block';
+            resourceToggle && resourceToggle.setAttribute('aria-expanded', 'true');
+            activePopover = 'resource';
+            closePopover('power');
+        }
+    }
+
+    if (statusBar) {
+        statusBar.addEventListener('click', (event) => {
+            const button = event.target.closest('button[data-metric="power"]');
+            if (button) {
+                event.stopPropagation();
+                togglePowerPopover();
+            }
+        });
+    }
+
+    if (resourceToggle) {
+        resourceToggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            toggleResourcePopover();
+        });
+    }
+
+    const resourceTabs = document.querySelector('.resource-wheel-popover-tabs');
+    if (resourceTabs) {
+        resourceTabs.addEventListener('keydown', (event) => {
+            const buttons = Array.from(resourceTabs.querySelectorAll('.resource-wheel-tab'));
+            const currentIndex = buttons.indexOf(document.activeElement);
+            if (currentIndex < 0) return;
+            let nextIndex = currentIndex;
+            if (event.key === 'ArrowRight') {
+                nextIndex = (currentIndex + 1) % buttons.length;
+            } else if (event.key === 'ArrowLeft') {
+                nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+            } else if (event.key === 'Home') {
+                nextIndex = 0;
+            } else if (event.key === 'End') {
+                nextIndex = buttons.length - 1;
+            } else {
+                return;
+            }
+            event.preventDefault();
+            const nextButton = buttons[nextIndex];
+            if (nextButton) {
+                nextButton.focus();
+                nextButton.click();
+            }
+        });
+    }
+
+    document.addEventListener('pointerdown', (event) => {
+        if (!activePopover) return;
+        const target = event.target;
+        const insidePower = statusPopover && statusPopover.contains(target);
+        const insideResource = resourcePopover && resourcePopover.contains(target);
+        const insideToggle = resourceToggle && resourceToggle.contains(target);
+        const insideStatusBar = statusBar && statusBar.contains(target);
+        if (!insidePower && !insideResource && !insideToggle && !insideStatusBar) {
+            closePopover();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closePopover();
+        }
+    });
+
+    if (resourcePopover) {
+        resourcePopover.addEventListener('pointerdown', (event) => event.stopPropagation());
+    }
+    if (statusPopover) {
+        statusPopover.addEventListener('pointerdown', (event) => event.stopPropagation());
+    }
+})();
+
+// Unresolved outputs donut chart renderer (independent from Phaser)
+(function () {
     // Temporary chart weighting.
     // Future resource accounting will determine how solids, liquids and gases
     // are compared within the unresolved-output indicator.
@@ -1607,6 +1813,172 @@ new Phaser.Game(config);
         renderUnresolvedOutputsChart();
     }
 
+    const RESOURCE_TAB_DEFS = [
+        { id: 'raw', label: 'Raw' },
+        { id: 'processed', label: 'Processed' },
+        { id: 'final', label: 'Final' },
+        { id: 'unresolved', label: 'Unresolved' }
+    ];
+    let activeResourceTab = 'raw';
+
+    function getResourceLifecycleKey(item) {
+        const source = item && typeof item === 'object' ? item : {};
+        if (source.lifecycle) {
+            return String(source.lifecycle).toLowerCase();
+        }
+        const key = String(source.key || source.name || '').toLowerCase();
+        const lifecycleMap = {
+            'municipal-waste': 'raw',
+            'technology-waste': 'raw',
+            'farm-waste': 'raw',
+            'industrial-waste': 'raw',
+            'building-waste': 'raw',
+            'sewerage': 'raw',
+            'sorted-plastic': 'processed',
+            'recovered-metals': 'processed',
+            'biogas': 'processed',
+            'sludge': 'processed',
+            'treated-wastewater': 'processed',
+            'steam': 'processed',
+            'waste-heat': 'processed',
+            'algae-biomass': 'processed',
+            'exported-electricity': 'final',
+            'clean-water': 'final',
+            'fertiliser': 'final',
+            'biofuel': 'final',
+            'recycled-glass': 'final',
+            'construction-aggregate': 'final',
+            'ai-compute': 'final',
+            'steam-heat': 'unresolved',
+            'waste-heat': 'unresolved'
+        };
+        return lifecycleMap[key] || 'unresolved';
+    }
+
+    function getResourceInventory() {
+        const sourceItems = Array.isArray(unresolvedOutputs) ? unresolvedOutputs.slice() : [];
+        const byKey = new Map(sourceItems.map((item) => [String(item && item.key ? item.key : '').toLowerCase(), item]));
+        const catalog = [
+            { key: 'municipal-waste', name: 'Municipal Waste', lifecycle: 'raw', amount: 100, unit: 't', percent: 24, status: 'unresolved' },
+            { key: 'technology-waste', name: 'Technology Waste', lifecycle: 'raw', amount: 85, unit: 't', percent: 17, status: 'unresolved' },
+            { key: 'farm-waste', name: 'Farm Waste', lifecycle: 'raw', amount: 70, unit: 't', percent: 14, status: 'unresolved' },
+            { key: 'industrial-waste', name: 'Industrial Waste', lifecycle: 'raw', amount: 60, unit: 't', percent: 12, status: 'unresolved' },
+            { key: 'building-waste', name: 'Building Waste', lifecycle: 'raw', amount: 45, unit: 't', percent: 9, status: 'unresolved' },
+            { key: 'sewerage', name: 'Sewerage', lifecycle: 'raw', amount: 35, unit: 'ML', percent: 7, status: 'unresolved' },
+            { key: 'sorted-plastic', name: 'Sorted Plastic', lifecycle: 'processed', amount: 18, unit: 't', percent: 4, status: 'active' },
+            { key: 'recovered-metals', name: 'Recovered Metals', lifecycle: 'processed', amount: 12, unit: 't', percent: 2, status: 'active' },
+            { key: 'biogas', name: 'Biogas', lifecycle: 'processed', amount: 9, unit: 'm3', percent: 2, status: 'active' },
+            { key: 'exported-electricity', name: 'Exported Electricity', lifecycle: 'final', amount: 14, unit: 'MW', percent: 3, status: 'active' },
+            { key: 'clean-water', name: 'Clean Water', lifecycle: 'final', amount: 8, unit: 'ML', percent: 2, status: 'active' },
+            { key: 'steam', name: 'Steam', lifecycle: 'unresolved', amount: 16, unit: 'MW', percent: 3, status: 'unresolved' },
+            { key: 'waste-heat', name: 'Waste Heat', lifecycle: 'unresolved', amount: 14, unit: 'MW', percent: 3, status: 'unresolved' },
+            { key: 'algae-biomass', name: 'Algae Biomass', lifecycle: 'unresolved', amount: 10, unit: 't', percent: 2, status: 'unresolved' },
+            { key: 'sludge', name: 'Sludge', lifecycle: 'unresolved', amount: 7, unit: 't', percent: 1, status: 'unresolved' }
+        ];
+
+        return catalog.map((entry) => {
+            const source = byKey.get(String(entry.key).toLowerCase()) || null;
+            const lifecycle = source && source.lifecycle ? String(source.lifecycle).toLowerCase() : entry.lifecycle;
+            const amount = source && Number.isFinite(Number(source.amount)) ? Number(source.amount) : Number(entry.amount) || 0;
+            const unit = source && source.unit ? source.unit : entry.unit || '';
+            const percent = Number(entry.percent) || 0;
+            return {
+                ...entry,
+                amount,
+                unit,
+                percent,
+                lifecycle: lifecycle || getResourceLifecycleKey(entry),
+                status: entry.status || 'active'
+            };
+        });
+    }
+
+    function renderResourcePopover() {
+        const tabList = document.querySelector('.resource-wheel-popover-tabs');
+        const body = document.getElementById('unresolved-output-legend');
+        if (!tabList || !body) return;
+
+        const inventory = getResourceInventory();
+        const tabCounts = RESOURCE_TAB_DEFS.reduce((acc, tab) => {
+            acc[tab.id] = inventory.filter((entry) => entry.lifecycle === tab.id).length;
+            return acc;
+        }, {});
+
+        if (!RESOURCE_TAB_DEFS.some((tab) => tab.id === activeResourceTab)) {
+            activeResourceTab = 'raw';
+        }
+
+        tabList.innerHTML = '';
+        RESOURCE_TAB_DEFS.forEach((tab) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `resource-wheel-tab${activeResourceTab === tab.id ? ' is-active' : ''}`;
+            button.setAttribute('role', 'tab');
+            button.setAttribute('aria-selected', activeResourceTab === tab.id ? 'true' : 'false');
+            button.setAttribute('aria-controls', 'resource-tab-panel');
+            button.setAttribute('data-tab', tab.id);
+            button.innerHTML = `<span>${tab.label}</span><span class="resource-wheel-tab-count">${tabCounts[tab.id] || 0}</span>`;
+            button.addEventListener('click', () => {
+                activeResourceTab = tab.id;
+                renderResourcePopover();
+            });
+            tabList.appendChild(button);
+        });
+
+        const visible = inventory.filter((entry) => entry.lifecycle === activeResourceTab);
+        body.innerHTML = '';
+        body.setAttribute('aria-label', `${RESOURCE_TAB_DEFS.find((tab) => tab.id === activeResourceTab)?.label || 'Resources'} resources`);
+        body.id = 'resource-tab-panel';
+
+        if (!visible.length) {
+            const empty = document.createElement('div');
+            empty.className = 'resource-wheel-empty';
+            empty.textContent = 'No resources in this category yet.';
+            body.appendChild(empty);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'resource-wheel-list';
+        visible.forEach((entry) => {
+            const row = document.createElement('div');
+            row.className = 'resource-wheel-list-row';
+
+            const main = document.createElement('div');
+            main.className = 'resource-wheel-list-main';
+
+            const marker = document.createElement('div');
+            marker.className = 'resource-wheel-list-marker';
+            marker.style.background = getColorForKey(entry.key || '', 0);
+            main.appendChild(marker);
+
+            const nameWrap = document.createElement('div');
+            nameWrap.className = 'resource-wheel-list-name';
+            nameWrap.textContent = entry.name || entry.key || 'Unknown';
+            main.appendChild(nameWrap);
+
+            row.appendChild(main);
+
+            const meta = document.createElement('div');
+            meta.className = 'resource-wheel-list-meta';
+            const amountText = entry.amount != null && Number.isFinite(Number(entry.amount)) ? `${Number(entry.amount)}${entry.unit ? ` ${entry.unit}` : ''}` : '—';
+            const percentText = entry.percent != null && Number.isFinite(Number(entry.percent)) ? `${Number(entry.percent)}%` : '—';
+            meta.textContent = `${amountText} · ${percentText}`;
+            row.appendChild(meta);
+
+            if (entry.status === 'unresolved') {
+                const badge = document.createElement('span');
+                badge.className = 'resource-wheel-list-badge';
+                badge.textContent = 'Unresolved';
+                row.appendChild(badge);
+            }
+
+            list.appendChild(row);
+        });
+
+        body.appendChild(list);
+    }
+
     function renderUnresolvedOutputsChart() {
         const svgWrap = document.querySelector('#unresolved-output-chart svg');
         const totalEl = document.getElementById('unresolved-output-total');
@@ -1626,11 +1998,11 @@ new Phaser.Game(config);
 
         const total = calculateUnresolvedTotal(unresolvedOutputs);
 
-        const size = 160;
+        const size = 112;
         const cx = size / 2;
         const cy = size / 2;
-        const radius = 60;
-        const stroke = 20;
+        const radius = 42;
+        const stroke = 16;
         const circumference = 2 * Math.PI * radius;
 
         // Background ring
@@ -1732,6 +2104,7 @@ new Phaser.Game(config);
 
         // Accessibility label summarising resources
         svgWrap.setAttribute('aria-label', `Unresolved outputs chart: ${ariaParts.join('; ')}`);
+        renderResourcePopover();
         // Update power indicator UI if the simulator scene is available
         // Power indicator removed — no-op
     }

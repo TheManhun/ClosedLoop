@@ -6,50 +6,20 @@ export default class MachineInfoPanel {
             power: true,
             resources: false
         };
+        this._lastMachine = null;
+        this._lastRecord = null;
+        this._lastSnapshot = null;
     }
 
     _create() {
         if (this.el) return this.el;
 
-        const host = document.querySelector('.simulator-root-wrapper') || document.body;
         const el = document.createElement('aside');
         el.id = 'machine-info-panel';
         el.className = 'operations-centre';
         el.setAttribute('aria-label', 'Operations Centre');
         el.dataset.collapsed = 'false';
-
-        const header = document.createElement('div');
-        header.className = 'operations-centre-header';
-
-        const titleBlock = document.createElement('div');
-        titleBlock.className = 'operations-centre-title';
-        const title = document.createElement('div');
-        title.className = 'operations-centre-title-main';
-        title.textContent = 'Operations Centre';
-        const subtitle = document.createElement('div');
-        subtitle.className = 'operations-centre-title-sub';
-        subtitle.textContent = 'Live system overview';
-        titleBlock.appendChild(title);
-        titleBlock.appendChild(subtitle);
-
-        const headerActions = document.createElement('div');
-        headerActions.className = 'operations-centre-actions';
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'operations-centre-toggle';
-        toggleBtn.type = 'button';
-        toggleBtn.textContent = '▾';
-        toggleBtn.addEventListener('click', () => this._setCollapsed(!this._isCollapsed()));
-        headerActions.appendChild(toggleBtn);
-
-        header.appendChild(titleBlock);
-        header.appendChild(headerActions);
-
-        const body = document.createElement('div');
-        body.className = 'operations-centre-body';
-
-        el.appendChild(header);
-        el.appendChild(body);
-        host.appendChild(el);
+        el.style.display = 'none';
 
         this.el = el;
         return el;
@@ -295,19 +265,24 @@ export default class MachineInfoPanel {
 
     show(machine, record) {
         if (!this.el) this._create();
-        this.el.style.display = 'flex';
-        this._renderCurrentView(machine, record);
+        this._lastMachine = machine || null;
+        this._lastRecord = record || null;
+        this._lastSnapshot = this._getSystemSnapshot();
+        this.el.style.display = 'none';
     }
 
     update(machine) {
-        if (!this.el) return;
-        this.show(machine);
+        if (!this.el) this._create();
+        this._lastMachine = machine || null;
+        this._lastSnapshot = this._getSystemSnapshot();
     }
 
     clear() {
+        this._lastMachine = null;
+        this._lastRecord = null;
+        this._lastSnapshot = this._getSystemSnapshot();
         if (!this.el) return;
-        this.el.querySelector('.operations-centre-body').innerHTML = '';
-        this._renderCurrentView(null, null);
+        this.el.style.display = 'none';
     }
 
     hide() {
