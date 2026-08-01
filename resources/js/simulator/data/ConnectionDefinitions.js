@@ -22,8 +22,8 @@ export default {
         resourceCategories: ['water', 'wastewater'],
         bidirectional: false,
         renderer: 'water',
-        enabled: false,
-        comingSoon: true
+        enabled: true,
+        comingSoon: false
     },
     gas: {
         key: 'gas',

@@ -23,6 +23,12 @@ export default class ConnectionManager {
         if (renderer.graphics) {
             renderer.graphics.setDepth(depth);
         }
+        if (renderer.flowIndicator) {
+            try {
+                if (renderer.flowIndicator.container) renderer.flowIndicator.container.setDepth(1100);
+                if (renderer.flowIndicator.graphics) renderer.flowIndicator.graphics.setDepth(1100);
+            } catch (e) {}
+        }
         if (Array.isArray(renderer.bolts)) {
             renderer.bolts.forEach((bolt) => {
                 try { bolt.setDepth(1100); } catch (e) {}
@@ -43,6 +49,327 @@ export default class ConnectionManager {
     _getConnectionEndpoint(record) {
         if (!record) return null;
         return this.scene._getRecordCenter(record);
+    }
+
+    _getLineStyle(connectionType) {
+        const type = String(connectionType || '').toLowerCase();
+        if (type === 'water') return { width: 5, color: 0x3b82f6, alpha: 1 };
+        if (type === 'gas') return { width: 4, color: 0x14b8a6, alpha: 1 };
+        if (type === 'conveyor') return { width: 4, color: 0x4b5563, alpha: 1 };
+        return { width: 4, color: 0x111111, alpha: 1 };
+    }
+
+    _getFlowIndicatorSpeed(connectionType) {
+        const type = String(connectionType || '').toLowerCase();
+        if (type === 'water') return 0.18;
+        return 0.12;
+    }
+
+    _getFlowIndicatorMetadata(connection) {
+        const base = {
+            resourceKey: null,
+            resourceName: null,
+            flowRate: null,
+            flowUnit: null,
+            temperature: null,
+            pressure: null,
+            quality: null,
+            state: 'normal'
+        };
+
+        if (!connection) return base;
+
+        const metadata = {
+            ...base,
+            resourceKey: connection.resourceKey ?? null,
+            resourceName: connection.resourceName ?? null,
+            flowRate: connection.flowRate ?? null,
+            flowUnit: connection.flowUnit ?? null,
+            temperature: connection.temperature ?? connection.temperatureC ?? null,
+            pressure: connection.pressure ?? connection.pressureBar ?? null,
+            quality: connection.quality ?? null,
+            state: connection.state ?? 'normal'
+        };
+
+        if (metadata.state == null || metadata.state === '') metadata.state = 'normal';
+        return metadata;
+    }
+
+    _getFlowIndicatorStyle(connection) {
+        if (!connection) return null;
+
+        const metadata = this._getFlowIndicatorMetadata(connection);
+        const identity = [metadata.resourceKey, metadata.resourceName].find((value) => typeof value === 'string' && value.trim().length > 0);
+        const text = identity ? String(identity).toLowerCase() : '';
+
+        if (/wastewater|sewer|sewage|effluent|greywater/.test(text)) {
+            return { size: 9, color: 0x7c2d12 };
+        }
+
+        if (/treated|recycled|purified/.test(text)) {
+            return { size: 9, color: 0x7dd3fc };
+        }
+
+        const type = String(connection.type || '').toLowerCase();
+        const state = String(metadata.state || 'normal').toLowerCase();
+        let color = 0x3b82f6;
+
+        if (type === 'water') {
+            if (state === 'idle') color = 0x64748b;
+            else if (state === 'restricted') color = 0x92400e;
+            else if (state === 'blocked') color = 0x7f1d1d;
+            else if (state === 'fault') color = 0xdc2626;
+            else color = 0x3b82f6;
+        }
+
+        return { size: 9, color };
+    }
+
+    _destroyFlowIndicator(renderer) {
+        if (!renderer || !renderer.flowIndicator) return;
+        try {
+            if (renderer.flowIndicator.items && renderer.flowIndicator.items.length) {
+                renderer.flowIndicator.items.forEach((item) => {
+                    try {
+                        if (item && item.container) item.container.destroy();
+                        if (item && item.graphics && item.graphics !== item.container) item.graphics.destroy();
+                    } catch (e) {}
+                });
+            }
+            if (renderer.flowIndicator.container) {
+                renderer.flowIndicator.container.destroy();
+            }
+            if (renderer.flowIndicator.graphics && renderer.flowIndicator.graphics !== renderer.flowIndicator.container) {
+                renderer.flowIndicator.graphics.destroy();
+            }
+        } catch (e) {}
+        renderer.flowIndicator = null;
+    }
+
+    createFlowIndicator(connection) {
+        const renderer = connection && connection._renderer;
+        if (!renderer) return null;
+
+        if (renderer.flowIndicator && renderer.flowIndicator.items && renderer.flowIndicator.items.length) {
+            if (!Number.isFinite(connection.flowProgress)) {
+                connection.flowProgress = 0;
+            }
+            return renderer.flowIndicator;
+        }
+
+        const style = this._getFlowIndicatorStyle(connection);
+        if (!style) return null;
+
+        const container = this.scene.add.container(0, 0);
+        container.setDepth(1100);
+        container.setScrollFactor(1);
+        container.disableInteractive && container.disableInteractive();
+        if (container.input) container.input.enabled = false;
+
+        const graphics = this.scene.add.graphics();
+        graphics.setDepth(1100);
+        graphics.setScrollFactor(1);
+        graphics.disableInteractive && graphics.disableInteractive();
+        if (graphics.input) graphics.input.enabled = false;
+        container.add(graphics);
+
+        const item = { container, graphics, size: style.size, color: style.color, tween: null, lastStart: null, lastEnd: null, anchorX: 0, anchorY: 0 };
+        const flowIndicator = {
+            items: [item],
+            container,
+            graphics,
+            metadata: this._getFlowIndicatorMetadata(connection),
+            rendererKey: String(connection.type || '').toLowerCase() || 'generic'
+        };
+
+        renderer.flowIndicator = flowIndicator;
+        connection.flowMetadata = flowIndicator.metadata;
+        if (!Number.isFinite(connection.flowProgress)) {
+            connection.flowProgress = 0;
+        }
+        return flowIndicator;
+    }
+
+    _startWaterIndicatorTween(connection, item, start, end) {
+        if (!item || !start || !end) return;
+        try {
+            if (item.tween) {
+                try { item.tween.stop(); } catch (e) {}
+            }
+            const distance = Math.hypot(end.x - start.x, end.y - start.y) || 1;
+            const duration = Math.max(800, distance * 2.4);
+            item.lastStart = start;
+            item.lastEnd = end;
+            item.anchorX = start.x;
+            item.anchorY = start.y;
+            item.container.setVisible(true);
+            item.container.setPosition(start.x, start.y);
+            item.tween = this.scene.tweens.add({
+                targets: item.container,
+                x: { from: start.x, to: end.x },
+                y: { from: start.y, to: end.y },
+                duration,
+                ease: 'Linear',
+                repeat: -1,
+                onUpdate: () => {
+                    try {
+                        const from = this.buildingManager.getMachine(connection.sourceBuildingId);
+                        const to = this.buildingManager.getMachine(connection.targetBuildingId);
+                        if (!from || !to) return;
+                        const liveStart = this._getConnectionEndpoint(from) || this.scene._getRecordCenter(from);
+                        const liveEnd = this._getConnectionEndpoint(to) || this.scene._getRecordCenter(to);
+                        if (!liveStart || !liveEnd) return;
+                        const dx = liveEnd.x - liveStart.x;
+                        const dy = liveEnd.y - liveStart.y;
+                        const currentX = item.container.x;
+                        const currentY = item.container.y;
+                        const progress = Math.max(0, Math.min(1, Math.hypot(currentX - liveStart.x, currentY - liveStart.y) / Math.max(1, Math.hypot(dx, dy))));
+                        const clampedX = liveStart.x + dx * progress;
+                        const clampedY = liveStart.y + dy * progress;
+                        item.container.setPosition(clampedX, clampedY);
+                        item.anchorX = clampedX;
+                        item.anchorY = clampedY;
+                    } catch (e) {}
+                },
+                onRepeat: () => {
+                    try {
+                        const from = this.buildingManager.getMachine(connection.sourceBuildingId);
+                        const to = this.buildingManager.getMachine(connection.targetBuildingId);
+                        if (!from || !to) return;
+                        const liveStart = this._getConnectionEndpoint(from) || this.scene._getRecordCenter(from);
+                        const liveEnd = this._getConnectionEndpoint(to) || this.scene._getRecordCenter(to);
+                        if (!liveStart || !liveEnd) return;
+                        item.container.setPosition(liveStart.x, liveStart.y);
+                        item.tween.stop();
+                        item.tween = this.scene.tweens.add({
+                            targets: item.container,
+                            x: { from: liveStart.x, to: liveEnd.x },
+                            y: { from: liveStart.y, to: liveEnd.y },
+                            duration: Math.max(800, Math.hypot(liveEnd.x - liveStart.x, liveEnd.y - liveStart.y) * 2.4),
+                            ease: 'Linear',
+                            repeat: -1,
+                            onUpdate: () => {
+                                try {
+                                    const current = this.buildingManager.getMachine(connection.sourceBuildingId);
+                                    const target = this.buildingManager.getMachine(connection.targetBuildingId);
+                                    if (!current || !target) return;
+                                    const liveStart2 = this._getConnectionEndpoint(current) || this.scene._getRecordCenter(current);
+                                    const liveEnd2 = this._getConnectionEndpoint(target) || this.scene._getRecordCenter(target);
+                                    if (!liveStart2 || !liveEnd2) return;
+                                    const dx2 = liveEnd2.x - liveStart2.x;
+                                    const dy2 = liveEnd2.y - liveStart2.y;
+                                    const currentX2 = item.container.x;
+                                    const currentY2 = item.container.y;
+                                    const progress2 = Math.max(0, Math.min(1, Math.hypot(currentX2 - liveStart2.x, currentY2 - liveStart2.y) / Math.max(1, Math.hypot(dx2, dy2))));
+                                    const clampedX2 = liveStart2.x + dx2 * progress2;
+                                    const clampedY2 = liveStart2.y + dy2 * progress2;
+                                    item.container.setPosition(clampedX2, clampedY2);
+                                    item.anchorX = clampedX2;
+                                    item.anchorY = clampedY2;
+                                } catch (e) {}
+                            }
+                        });
+                    } catch (e) {}
+                }
+            });
+        } catch (e) {}
+    }
+
+    updateFlowIndicator(connection, delta) {
+        const renderer = connection && connection._renderer;
+        const indicator = renderer && renderer.flowIndicator;
+        const item = indicator && indicator.items && indicator.items[0] ? indicator.items[0] : null;
+        if (!item) return;
+
+        const indicatorType = String(connection.type || '').toLowerCase();
+        if (indicatorType !== 'water' && indicatorType !== 'gas' && indicatorType !== 'conveyor') return;
+
+        if (!Number.isFinite(connection.flowProgress)) {
+            connection.flowProgress = 0;
+        }
+
+        const deltaSeconds = Number(delta) / 1000;
+        const safeDelta = Number.isFinite(deltaSeconds) ? deltaSeconds : 0;
+        connection.flowProgress = (connection.flowProgress + this._getFlowIndicatorSpeed(connection.type) * safeDelta) % 1;
+        if (connection.flowProgress < 0) connection.flowProgress = 0;
+
+        const from = this.buildingManager.getMachine(connection.sourceBuildingId);
+        const to = this.buildingManager.getMachine(connection.targetBuildingId);
+        if (!from || !to) return;
+
+        const start = this._getConnectionEndpoint(from) || this.scene._getRecordCenter(from);
+        const end = this._getConnectionEndpoint(to) || this.scene._getRecordCenter(to);
+        if (!start || !end) return;
+
+        const previousStart = item.lastStart || null;
+        const previousEnd = item.lastEnd || null;
+        const startChanged = !previousStart || Math.abs((start.x || 0) - (previousStart.x || 0)) > 0.001 || Math.abs((start.y || 0) - (previousStart.y || 0)) > 0.001;
+        const endChanged = !previousEnd || Math.abs((end.x || 0) - (previousEnd.x || 0)) > 0.001 || Math.abs((end.y || 0) - (previousEnd.y || 0)) > 0.001;
+
+        if (indicatorType === 'water') {
+            if (!item.tween || !item.tween.isPlaying() || startChanged || endChanged) {
+                this._startWaterIndicatorTween(connection, item, start, end);
+            }
+            this._renderFlowIndicator(connection, start, end);
+            return;
+        }
+
+        this._renderFlowIndicator(connection, start, end);
+    }
+
+    _renderFlowIndicator(connection, start, end) {
+        const renderer = connection && connection._renderer;
+        const indicator = renderer && renderer.flowIndicator;
+        const item = indicator && indicator.items && indicator.items[0] ? indicator.items[0] : null;
+        if (!item || !start || !end) return;
+
+        const style = this._getFlowIndicatorStyle(connection);
+        if (!style) {
+            item.container.setVisible(false);
+            return;
+        }
+
+        indicator.metadata = this._getFlowIndicatorMetadata(connection);
+        connection.flowMetadata = indicator.metadata;
+
+        const indicatorType = String(connection.type || '').toLowerCase();
+        const isWater = indicatorType === 'water';
+        if (isWater && item.container) {
+            item.container.setVisible(true);
+            if (item.tween && item.tween.isPlaying()) {
+                const x = item.container.x;
+                const y = item.container.y;
+                item.container.setPosition(x, y);
+            } else {
+                const progress = Number.isFinite(connection.flowProgress) ? connection.flowProgress : 0;
+                const x = start.x + (end.x - start.x) * progress;
+                const y = start.y + (end.y - start.y) * progress;
+                item.container.setPosition(x, y);
+            }
+        } else {
+            const progress = Number.isFinite(connection.flowProgress) ? connection.flowProgress : 0;
+            const x = start.x + (end.x - start.x) * progress;
+            const y = start.y + (end.y - start.y) * progress;
+            if (item.container) {
+                item.container.setVisible(true);
+                item.container.setPosition(x, y);
+            }
+        }
+        if (item.graphics) {
+            item.graphics.setVisible(true);
+        }
+        item.graphics.clear();
+        item.graphics.lineStyle(0);
+        item.graphics.fillStyle(style.color, 1);
+        item.graphics.beginPath();
+        item.graphics.moveTo(0, -style.size * 0.7);
+        item.graphics.lineTo(style.size * 0.5, -style.size * 0.1);
+        item.graphics.lineTo(style.size * 0.25, style.size * 0.55);
+        item.graphics.lineTo(0, style.size * 0.75);
+        item.graphics.lineTo(-style.size * 0.25, style.size * 0.55);
+        item.graphics.lineTo(-style.size * 0.5, -style.size * 0.1);
+        item.graphics.closePath();
+        item.graphics.fillPath();
     }
 
     _drawBoltShape(bolt) {
@@ -147,10 +474,17 @@ export default class ConnectionManager {
             toPort: opts.toPort || null,
             direction: opts.direction || (def.bidirectional ? 'bidirectional' : 'unidirectional'),
             capacity: opts.capacity || 0,
-            unit: opts.unit || null,
+            resourceKey: opts.resourceKey ?? null,
+            resourceName: opts.resourceName ?? null,
+            flowRate: opts.flowRate ?? null,
+            flowUnit: opts.flowUnit ?? opts.unit ?? null,
+            temperature: opts.temperature ?? opts.temperatureC ?? null,
+            pressure: opts.pressure ?? opts.pressureBar ?? null,
+            quality: opts.quality ?? null,
+            state: opts.state ?? 'normal',
             status: 'active',
             active: true,
-            flowProgress: 0,
+            flowProgress: Number.isFinite(opts.flowProgress) ? opts.flowProgress : 0,
             _renderer: null
         };
 
@@ -182,14 +516,17 @@ export default class ConnectionManager {
                     this._startPowerBoltAnimation(rec);
                 }
             } else {
-                // simple line for other types
+                const style = this._getLineStyle(def.key);
                 const g = this.scene.add.graphics();
                 g.setDepth(this._getConnectionDepth(def.key));
-                g.lineStyle(4, 0x111111, 1);
+                g.disableInteractive && g.disableInteractive();
+                g.input && (g.input.enabled = false);
+                g.lineStyle(style.width, style.color, style.alpha);
                 g.beginPath(); g.moveTo(start.x, start.y); g.lineTo(end.x, end.y); g.strokePath();
                 renderer = { graphics: g, start, end };
             }
             rec._renderer = renderer;
+            this.createFlowIndicator(rec);
             this._setLayerDepth(renderer, def.key);
         } catch (e) {
             console.warn('Failed to render connection', e);
@@ -223,6 +560,7 @@ export default class ConnectionManager {
                 } else if (rec._renderer.graphics) {
                     rec._renderer.graphics.destroy();
                 }
+                this._destroyFlowIndicator(rec._renderer);
             }
         } catch (e) {}
         this._connections.delete(id);
@@ -310,9 +648,19 @@ export default class ConnectionManager {
                     } else if (rec._renderer.graphics) {
                         try {
                             rec._renderer.graphics.clear();
-                            rec._renderer.graphics.lineStyle(4, 0x111111, 1);
+                            const style = this._getLineStyle(rec.type);
+                            rec._renderer.graphics.lineStyle(style.width, style.color, style.alpha);
                             rec._renderer.graphics.beginPath(); rec._renderer.graphics.moveTo(start.x, start.y); rec._renderer.graphics.lineTo(end.x, end.y); rec._renderer.graphics.strokePath();
                             rec._renderer.start = start; rec._renderer.end = end;
+                        } catch (e) {}
+                    }
+                    const indicatorType = String(rec.type || '').toLowerCase();
+                    if (indicatorType === 'water' || indicatorType === 'gas' || indicatorType === 'conveyor') {
+                        try {
+                            if (!rec._renderer.flowIndicator) {
+                                this.createFlowIndicator(rec);
+                            }
+                            this._renderFlowIndicator(rec, start, end);
                         } catch (e) {}
                     }
                 }
@@ -328,29 +676,46 @@ export default class ConnectionManager {
         if (!this._connections) return;
         const deltaSeconds = Math.max(0, (delta || 0) / 1000);
         for (const rec of this._connections.values()) {
-            if (rec.type !== 'power') continue;
             const renderer = rec._renderer;
             if (!renderer) continue;
             const isActive = rec.active !== false && rec.status !== 'inactive';
-            if (!isActive) {
-                if (Array.isArray(renderer.bolts)) {
-                    renderer.bolts.forEach((bolt) => {
-                        try {
-                            if (bolt._boltTween) {
-                                bolt._boltTween.stop();
-                            }
-                        } catch (e) {}
-                        bolt.clear();
-                        bolt.setVisible(false);
-                    });
+
+            if (rec.type === 'power') {
+                if (!isActive) {
+                    if (Array.isArray(renderer.bolts)) {
+                        renderer.bolts.forEach((bolt) => {
+                            try {
+                                if (bolt._boltTween) {
+                                    bolt._boltTween.stop();
+                                }
+                            } catch (e) {}
+                            bolt.clear();
+                            bolt.setVisible(false);
+                        });
+                    }
+                    continue;
+                }
+
+                if (!Array.isArray(renderer.bolts) || renderer.bolts.length === 0) continue;
+                if (!renderer.bolts[0]._boltTween || !renderer.bolts[0]._boltTween.isPlaying()) {
+                    this._startPowerBoltAnimation(rec);
                 }
                 continue;
             }
 
-            if (!Array.isArray(renderer.bolts) || renderer.bolts.length === 0) continue;
-            if (!renderer.bolts[0]._boltTween || !renderer.bolts[0]._boltTween.isPlaying()) {
-                this._startPowerBoltAnimation(rec);
+            const indicatorType = String(rec.type || '').toLowerCase();
+            if ((indicatorType !== 'water' && indicatorType !== 'gas' && indicatorType !== 'conveyor') || !isActive) {
+                if (renderer.flowIndicator && renderer.flowIndicator.container) {
+                    renderer.flowIndicator.container.setVisible(false);
+                }
+                continue;
             }
+
+            if (!renderer.flowIndicator) {
+                this.createFlowIndicator(rec);
+            }
+
+            this.updateFlowIndicator(rec, delta);
         }
     }
 

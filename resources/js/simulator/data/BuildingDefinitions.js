@@ -99,7 +99,7 @@ export default class BuildingDefinitions {
                 movable: true,
                 placeable: false,
                 shortCode: 'SW',
-                provides: ['water'],
+                provides: ['water', 'wastewater'],
                 accepts: [],
                 suggestedNext: [ { defKey: 'sortingFacility', name: 'Sorting Facility' } ]
             },
@@ -112,7 +112,7 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
-                accepts: ['power'],
+                accepts: ['power', 'water'],
                 provides: ['power'],
                 suggestedNext: []
             },
@@ -140,7 +140,7 @@ export default class BuildingDefinitions {
                 deletable: true,
                 movable: true,
                 placeable: true,
-                accepts: ['power'],
+                accepts: ['power', 'water'],
                 provides: ['power'],
                 generatesPower: false,
                 consumesPower: false,
@@ -195,6 +195,8 @@ export default class BuildingDefinitions {
                 const powerValue = Number(m.powerRequired ?? m.powerUsage ?? m.electricityRequired ?? m.powerConsumption ?? 0);
                 const needsPower = Number.isFinite(powerValue) && powerValue > 0;
                 const producesPower = Number.isFinite(Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0)) && Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0) > 0;
+                const waterValue = Number(m.waterRequired ?? m.waterDemand ?? m.waterUsage ?? 0);
+                const producesWater = Number.isFinite(Number(m.waterProduced ?? m.waterGenerated ?? 0)) && Number(m.waterProduced ?? m.waterGenerated ?? 0) > 0;
                 const accepts = Array.isArray(baseDef.accepts) ? baseDef.accepts.slice() : [];
                 const provides = Array.isArray(baseDef.provides) ? baseDef.provides.slice() : [];
 
@@ -203,6 +205,12 @@ export default class BuildingDefinitions {
                 }
                 if (producesPower && !provides.includes('power')) {
                     provides.push('power');
+                }
+                if ((waterValue > 0 || producesWater) && !accepts.includes('water')) {
+                    accepts.push('water');
+                }
+                if (producesWater && !provides.includes('water')) {
+                    provides.push('water');
                 }
 
                 const defObj = Object.assign({}, baseDef, {

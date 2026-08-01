@@ -93,25 +93,43 @@ export default class ConnectionController {
         const start = this.scene._getRecordCenter(this._source);
         const end = { x: world.x, y: world.y };
         const valid = true; // cannot validate until target selected; show neutral green
-        const color = valid ? 0x10b981 : 0xff0000;
-        this._previewGraphics.lineStyle(4, color, 0.9);
+        const color = valid ? (this._def && this._def.key === 'water' ? 0x3b82f6 : 0x10b981) : 0xff0000;
+        this._previewGraphics.lineStyle(this._def && this._def.key === 'water' ? 5 : 4, color, 0.9);
         this._previewGraphics.beginPath(); this._previewGraphics.moveTo(start.x, start.y); this._previewGraphics.lineTo(end.x, end.y); this._previewGraphics.strokePath();
+    }
+
+    _getConnectionCapabilities() {
+        if (!this._def) return new Set();
+        const connectionType = String(this._def.key || '').toLowerCase();
+        const capabilities = new Set();
+        if (connectionType) capabilities.add(connectionType);
+        const resourceCategories = Array.isArray(this._def.resourceCategories) ? this._def.resourceCategories : [];
+        resourceCategories.forEach((capability) => {
+            if (capability) capabilities.add(String(capability).toLowerCase());
+        });
+        return capabilities;
+    }
+
+    _hasCapability(values, capabilities) {
+        if (!Array.isArray(values)) return false;
+        const normalized = values.map((value) => String(value || '').toLowerCase());
+        return normalized.some((value) => capabilities.has(value));
     }
 
     _isCompatibleSource(rec) {
         if (!rec || !this._def) return false;
         const def = this.scene._buildingDefs[rec.defKey] || this.scene._buildingDefs[rec.type] || {};
-        const connectionType = this._def.key;
-        return Boolean(def && Array.isArray(def.provides) && def.provides.includes(connectionType));
+        const capabilities = this._getConnectionCapabilities();
+        return Boolean(def && this._hasCapability(Array.isArray(def.provides) ? def.provides : [], capabilities));
     }
 
     _isCompatibleTarget(source, target) {
         if (!source || !target || !this._def) return false;
         if (source === target) return false;
-        const connectionType = this._def.key;
         const targetDef = this.scene._buildingDefs[target.defKey] || this.scene._buildingDefs[target.type] || {};
+        const capabilities = this._getConnectionCapabilities();
         const accepts = Array.isArray(targetDef.accepts) ? targetDef.accepts : [];
-        return accepts.includes(connectionType);
+        return this._hasCapability(accepts, capabilities);
     }
 
     _validateConnection(source, target) {
@@ -128,10 +146,15 @@ export default class ConnectionController {
 
         const sourceProvides = Array.isArray(sourceDef.provides) ? sourceDef.provides : [];
         const targetAccepts = Array.isArray(targetDef.accepts) ? targetDef.accepts : [];
+        const capabilities = this._getConnectionCapabilities();
 
         const isPowerConnection = connectionType === 'power';
-        const sourceCanProvide = sourceProvides.includes(connectionType) || (isPowerConnection && (source.defKey === 'distributionBoard' || source.type === 'power_distribution' || source.defKey === 'externalGrid'));
-        const targetCanAccept = targetAccepts.includes(connectionType) || (isPowerConnection && (target.defKey === 'distributionBoard' || target.type === 'power_distribution' || target.defKey === 'processUnit' || target.defKey === 'sortingFacility'));
+        const sourceCanProvide = isPowerConnection
+            ? sourceProvides.includes(connectionType) || (source.defKey === 'distributionBoard' || source.type === 'power_distribution' || source.defKey === 'externalGrid')
+            : this._hasCapability(sourceProvides, capabilities);
+        const targetCanAccept = isPowerConnection
+            ? targetAccepts.includes(connectionType) || (target.defKey === 'distributionBoard' || target.type === 'power_distribution' || target.defKey === 'processUnit' || target.defKey === 'sortingFacility')
+            : this._hasCapability(targetAccepts, capabilities);
 
         if (!sourceCanProvide) {
             return { valid: false, message: `${sourceDef.name || 'This object'} does not provide ${connectionType}.` };
