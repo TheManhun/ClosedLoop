@@ -1041,6 +1041,9 @@ export default class ConnectionManager {
         if (typeof this.scene._refreshPowerBalance === 'function') {
             try { this.scene._refreshPowerBalance(); } catch (e) {}
         }
+        if (typeof this.scene._refreshAnnualFlows === 'function') {
+            try { this.scene._refreshAnnualFlows(); } catch (e) {}
+        }
         return rec;
     }
 
@@ -1072,6 +1075,9 @@ export default class ConnectionManager {
         this._syncRecordConnections();
         if (typeof this.scene._refreshPowerBalance === 'function') {
             try { this.scene._refreshPowerBalance(); } catch (e) {}
+        }
+        if (typeof this.scene._refreshAnnualFlows === 'function') {
+            try { this.scene._refreshAnnualFlows(); } catch (e) {}
         }
         return true;
     }
@@ -1185,6 +1191,9 @@ export default class ConnectionManager {
         this._syncRecordConnections();
         if (typeof this.scene._refreshPowerBalance === 'function') {
             try { this.scene._refreshPowerBalance(); } catch (e) {}
+        }
+        if (typeof this.scene._refreshAnnualFlows === 'function') {
+            try { this.scene._refreshAnnualFlows(); } catch (e) {}
         }
     }
 

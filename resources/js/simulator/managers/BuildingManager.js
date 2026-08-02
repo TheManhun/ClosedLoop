@@ -50,7 +50,10 @@ export default class BuildingManager {
 
     placeMachine(ix, iy, defKey) {
         if (!this.canPlace(ix, iy, defKey)) return null;
-        const def = this.defs.get(defKey) || this.defs.get('processUnit');
+        let def = this.defs.get(defKey) || this.defs.get('processUnit');
+        // If the resolved definition lacks engineering fields (e.g. annual_capacity),
+        // allow the BuildingDefinitions aliasing to resolve to API-backed objects.
+        // Do not special-case numeric ids here.
         const gs = this.grid.config;
         const id = this._nextId++;
 
@@ -160,6 +163,9 @@ export default class BuildingManager {
         if (typeof this.scene._refreshPowerBalance === 'function') {
             try { this.scene._refreshPowerBalance(); } catch (e) { console.warn('Refresh power balance failed', e); }
         }
+        if (typeof this.scene._refreshAnnualFlows === 'function') {
+            try { this.scene._refreshAnnualFlows(); } catch (e) { console.warn('Refresh annual flows failed', e); }
+        }
 
         return record;
     }
@@ -230,6 +236,9 @@ export default class BuildingManager {
 
         if (typeof this.scene._refreshPowerBalance === 'function') {
             try { this.scene._refreshPowerBalance(); } catch (e) { console.warn('Refresh power balance failed', e); }
+        }
+        if (typeof this.scene._refreshAnnualFlows === 'function') {
+            try { this.scene._refreshAnnualFlows(); } catch (e) { console.warn('Refresh annual flows failed', e); }
         }
 
         return true;

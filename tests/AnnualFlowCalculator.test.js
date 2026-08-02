@@ -46,4 +46,4 @@ import assert from 'assert';
     assert.strictEqual(Number.isFinite(res.unresolvedPercent), true);
 }
 
-console.log('AnnualFlowCalculator tests passed');
+// tests complete

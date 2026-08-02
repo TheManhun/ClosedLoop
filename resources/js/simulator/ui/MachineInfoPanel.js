@@ -1,3 +1,7 @@
+import calculateAnnualFlow from '../services/AnnualFlowCalculator.js';
+import FlowConnectionResolver from '../services/FlowConnectionResolver.js';
+import DemoScenarioData from '../data/DemoScenarioData.js';
+
 export default class MachineInfoPanel {
     constructor() {
         this.el = null;
@@ -20,6 +24,12 @@ export default class MachineInfoPanel {
         el.setAttribute('aria-label', 'Operations Centre');
         el.dataset.collapsed = 'false';
         el.style.display = 'none';
+
+        // Ensure there is a body container where sections can be rendered
+        const body = document.createElement('div');
+        body.className = 'operations-centre-body';
+        body.style.display = 'none';
+        el.appendChild(body);
 
         this.el = el;
         return el;
@@ -260,6 +270,72 @@ export default class MachineInfoPanel {
             resourceList.appendChild(row);
         });
         resourcesContent.appendChild(resourceList);
+        // Flow calculations: check for placed farm waste and anaerobic digester
+        try {
+            const scene = window.__simulatorScene;
+            const buildingManager = scene && scene._buildingManager;
+            const connectionManager = scene && scene._connectionManager;
+            const buildingDefinitions = scene && scene._buildingDefinitions;
+            const resolver = new FlowConnectionResolver(buildingManager, buildingDefinitions, connectionManager);
+            const placed = buildingManager ? buildingManager.getPlacedMachines() : [];
+            const farmSource = placed.find((r) => resolver.getStableKeyForRecord(r) === 'farm_waste') || null;
+            const digesterRecord = placed.find((r) => resolver.getStableKeyForRecord(r) === 'anaerobic_digester') || null;
+
+            const scenarioSupply = DemoScenarioData.resourceSupplies && DemoScenarioData.resourceSupplies.farm_waste ? DemoScenarioData.resourceSupplies.farm_waste : null;
+            const resourceRef = {
+                stable_key: 'farm_waste',
+                annual_available: scenarioSupply ? Number(scenarioSupply.annualAvailable) : 0,
+                unit: scenarioSupply ? scenarioSupply.unit : 't/year',
+                dataStatus: scenarioSupply ? scenarioSupply.dataStatus : 'placeholder'
+            };
+
+            // resolve machine reference from API definitions when available
+            let machineRef = null;
+            if (buildingDefinitions && Array.isArray(buildingDefinitions._machines)) {
+                machineRef = buildingDefinitions._machines.find((m) => m.stable_key === 'anaerobic_digester') || null;
+            }
+            // fallback: try local def for capacity values
+            if (!machineRef && digesterRecord && buildingDefinitions && buildingDefinitions.get) {
+                const def = buildingDefinitions.get(digesterRecord.defKey);
+                if (def) {
+                    machineRef = {
+                        stable_key: 'anaerobic_digester',
+                        annual_capacity: def.annual_capacity ?? def.annualCapacity ?? 0,
+                        default_operating_level: def.default_operating_level ?? def.defaultOperatingLevel ?? 0.8,
+                        capacity_unit: def.capacity_unit || def.capacityUnit || 't/year'
+                    };
+                }
+            }
+
+            const connInfo = resolver.hasValidConveyorConnection(farmSource, digesterRecord);
+            const calc = calculateAnnualFlow({ resource: resourceRef, machine: machineRef, connectedAnnualResourceAvailability: resourceRef.annual_available, connectionExists: !!connInfo.connectionExists });
+
+            // Build minimal Flows UI
+            const flowsContent = document.createElement('div');
+            flowsContent.className = 'operations-centre-section-content';
+
+            // Resource box
+            const rBox = document.createElement('div'); rBox.className = 'operations-centre-flow-box';
+            rBox.appendChild(this._makeRow('Farm Waste (placeholder)', `${calc.annualAvailable.toLocaleString()} ${resourceRef.unit}`, ''));
+            rBox.appendChild(this._makeRow('Processed', `${calc.annualProcessed.toLocaleString()} ${calc.unit}`, ''));
+            rBox.appendChild(this._makeRow('Unprocessed', `${calc.annualUnprocessed.toLocaleString()} ${calc.unit}`, ''));
+            rBox.appendChild(this._makeRow('Unresolved', `${Math.round(calc.unresolvedPercent)}%`, ''));
+            flowsContent.appendChild(rBox);
+
+            // Machine box
+            const mBox = document.createElement('div'); mBox.className = 'operations-centre-flow-box';
+            mBox.appendChild(this._makeRow('Anaerobic Digester (calculated)', `Design Capacity: ${calc.annualCapacity.toLocaleString()} ${calc.unit || ''}`, ''));
+            mBox.appendChild(this._makeRow('Operating Level', `${(calc.operatingLevel * 100) || (machineRef && (machineRef.default_operating_level || machineRef.defaultOperatingLevel) * 100) || 0}%`, ''));
+            mBox.appendChild(this._makeRow('Effective Capacity', `${calc.effectiveAnnualCapacity.toLocaleString()} ${calc.unit}`, ''));
+            mBox.appendChild(this._makeRow('Actual Input', `${calc.annualProcessed.toLocaleString()} ${calc.unit}`, ''));
+            mBox.appendChild(this._makeRow('Utilisation', `${Math.round(calc.machineUtilisationPercent)}%`, ''));
+            flowsContent.appendChild(mBox);
+
+            body.appendChild(this._buildSection('flows', 'Flows', connInfo.connectionExists ? 'Connected' : 'Not connected', flowsContent, true));
+        } catch (e) {
+            // ignore failures — keep UI minimal
+        }
+
         body.appendChild(this._buildSection('resources', 'Resources', `${resourceItems.length}`, resourcesContent, false));
     }
 
@@ -268,13 +344,17 @@ export default class MachineInfoPanel {
         this._lastMachine = machine || null;
         this._lastRecord = record || null;
         this._lastSnapshot = this._getSystemSnapshot();
-        this.el.style.display = 'none';
+        // Ensure panel is visible when requested
+        this.el.style.display = 'block';
     }
 
     update(machine) {
         if (!this.el) this._create();
         this._lastMachine = machine || null;
         this._lastSnapshot = this._getSystemSnapshot();
+        // Ensure panel is visible when updating
+        this.el.style.display = 'block';
+        try { this._renderCurrentView(this._lastMachine, this._lastRecord); } catch (e) { /* ignore render errors */ }
     }
 
     clear() {

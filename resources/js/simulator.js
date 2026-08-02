@@ -340,6 +340,16 @@ class PrototypeScene extends Phaser.Scene {
         }).catch(e => { /* ignore */ });
         // Machine info UI panel (pure DOM) - scene fetches data then delegates rendering
         this._machineInfoPanel = new MachineInfoPanel();
+        // Attach machine info panel to the document so it can render flows normally
+        try {
+            // Defer append to ensure document.body exists in all embed scenarios
+            setTimeout(() => {
+                try {
+                    const panelEl = this._machineInfoPanel._create();
+                    if (panelEl && !document.getElementById('machine-info-panel')) document.body.appendChild(panelEl);
+                } catch (e) { /* ignore inner errors */ }
+            }, 50);
+        } catch (e) { /* ignore DOM attach errors */ }
 
         // Expose machine info helper for InputHandler and other scene code
         this.showMachineInfoFor = async (record) => {
@@ -706,6 +716,11 @@ class PrototypeScene extends Phaser.Scene {
                 } catch (e) {
                     console.warn('Toolbox population failed', e);
                 }
+                // Ensure machine info panel is attached after toolbox population
+                try {
+                    const panelEl = this._machineInfoPanel._create();
+                    if (panelEl && !document.getElementById('machine-info-panel')) document.body.appendChild(panelEl);
+                } catch (e) { /* ignore */ }
                 // BuildingManager was instantiated eagerly during scene create(); definitions have populated.
             } catch (err) {
                 console.error('Failed to load machines from API:', err);
@@ -1524,6 +1539,15 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
             '<button type="button" class="simulator-status-pill" data-tone="neutral" data-metric="efficiency"><span class="simulator-status-label">Efficiency</span><span class="simulator-status-value">—</span></button>'
         ].join('');
     }
+};
+
+// Refresh lightweight annual flow visuals / UI hooks
+PrototypeScene.prototype._refreshAnnualFlows = function () {
+    try {
+        if (this._machineInfoPanel && typeof this._machineInfoPanel.update === 'function') {
+            try { this._machineInfoPanel.update(this._machineInfoPanel._lastMachine); } catch (e) {}
+        }
+    } catch (e) {}
 };
 
 PrototypeScene.prototype._getRecordCenter = function (rec) {

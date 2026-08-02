@@ -11,7 +11,7 @@ export default class ResourceRepository {
             if (res.ok) {
                 const resources = await res.json();
                 if (Array.isArray(resources) && resources.length > 0) {
-                    console.info('resource_source: supabase');
+                    console.debug('resource_source: supabase');
                     this._resources = resources;
                     this._loaded = true;
                     return this._resources;
@@ -22,7 +22,7 @@ export default class ResourceRepository {
         }
 
         // Fallback: empty array (built-ins handled by BuildingDefinitions)
-        console.info('resource_source: fallback_empty');
+        console.debug('resource_source: fallback_empty');
         this._resources = [];
         this._loaded = true;
         return this._resources;
