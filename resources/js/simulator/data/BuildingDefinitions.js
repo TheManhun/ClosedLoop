@@ -218,6 +218,36 @@ export default class BuildingDefinitions {
         this._repo = new MachineRepository();
     }
 
+    // Merge API definition into builtin definition without overwriting
+    // useful simulator metadata. Rules:
+    // - preserve builtin visual/renderer metadata (accepts/provides/footprint/textureKey/image)
+    // - overlay authoritative API engineering fields when defined (annual_capacity, default_operating_level, stable_key, power_required, etc.)
+    // - do not let null/undefined/empty-array/empty-object from API wipe useful builtin values
+    _mergeDefs(builtin, api) {
+        const base = Object.assign({}, builtin || {});
+        if (!api || typeof api !== 'object') return base;
+
+        const merged = Object.assign({}, base);
+
+        const skipEmpty = (v) => v === null || v === undefined || (Array.isArray(v) && v.length === 0) || (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+
+        // Copy API fields only when meaningful
+        for (const k of Object.keys(api)) {
+            const val = api[k];
+            if (skipEmpty(val)) continue;
+            // Do not let API arrays/objects replace builtin arrays/objects when builtin has meaningful values
+            if ((k === 'accepts' || k === 'provides' || k === 'footprint') && (base[k] && (Array.isArray(base[k]) ? base[k].length > 0 : true))) {
+                // keep builtin
+                continue;
+            }
+            // texture/image preference: keep builtin if it has textureKey or image
+            if ((k === 'textureKey' || k === 'image') && (base.textureKey || base.image)) continue;
+            merged[k] = val;
+        }
+
+        return merged;
+    }
+
     async init() {
         try {
             // Prefer a direct API fetch for authoritative machine records.
