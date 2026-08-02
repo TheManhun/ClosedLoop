@@ -69,13 +69,79 @@ class SupabaseService
      */
     public function getMachines(): array
     {
-        $url = $this->baseUrl . '/rest/v1/machines?select=*';
+        // Request joined machine_resources -> resources relationship to provide
+        // a normalized payload including inputs/outputs per machine.
+        // Request all machine columns (safe if new columns don't exist) and include the machine_resources relation
+        // Only request fields that exist in the current Supabase schema to avoid 400 errors
+        // (machine_resources currently contains: id,machine_id,resource_id,direction,amount,unit)
+        $select = rawurlencode('*,machine_resources(amount,unit,direction,resources(*))');
+        $url = $this->baseUrl . '/rest/v1/machines?select=' . $select;
         try {
             $resp = Http::withHeaders($this->headers())
                 ->timeout(15)
                 ->get($url)
                 ->throw();
-            return $resp->json();
+            $json = $resp->json();
+
+            // Normalize each machine to include a `resources` array mirroring machine_resources
+            $out = [];
+            if (is_array($json)) {
+                foreach ($json as $m) {
+                    $machine = [
+                        'id' => $m['id'] ?? null,
+                        'stable_key' => $m['stable_key'] ?? null,
+                        'name' => $m['name'] ?? null,
+                        'description' => $m['description'] ?? null,
+                        'category' => $m['category'] ?? null,
+                        'image' => $m['image'] ?? null,
+                        'configurable' => isset($m['configurable']) ? boolval($m['configurable']) : false,
+                        'power_required' => $m['power_required'] ?? null,
+                        'water_required' => $m['water_required'] ?? null,
+                        'footprint_x' => $m['footprint_x'] ?? null,
+                        'footprint_y' => $m['footprint_y'] ?? null,
+                        'annual_capacity' => $m['annual_capacity'] ?? null,
+                        'capacity_unit' => $m['capacity_unit'] ?? null,
+                        'default_operating_level' => $m['default_operating_level'] ?? null,
+                        'build_cost' => $m['build_cost'] ?? null,
+                        'maintenance_cost' => $m['maintenance_cost'] ?? null,
+                        'data_status' => $m['data_status'] ?? null,
+                        'source_reference' => $m['source_reference'] ?? null,
+                        'confidence' => $m['confidence'] ?? null,
+                        'notes' => $m['notes'] ?? null,
+                        'resources' => []
+                    ];
+
+                    if (!empty($m['machine_resources']) && is_array($m['machine_resources'])) {
+                        foreach ($m['machine_resources'] as $mr) {
+                            $resObj = $mr['resources'] ?? $mr['resource'] ?? null;
+                            if (is_array($resObj) && array_values($resObj) === $resObj) {
+                                $resObj = $resObj[0] ?? null;
+                            }
+                            $machine['resources'][] = [
+                                'direction' => $mr['direction'] ?? null,
+                                'quantity_basis' => $mr['quantity_basis'] ?? null,
+                                'amount' => $mr['amount'] ?? null,
+                                'unit' => $mr['unit'] ?? null,
+                                'data_status' => $mr['data_status'] ?? null,
+                                'evidence_reference' => $mr['evidence_reference'] ?? null,
+                                'resource' => $resObj ? [
+                                    'id' => $resObj['id'] ?? null,
+                                    'stable_key' => $resObj['stable_key'] ?? null,
+                                    'name' => $resObj['name'] ?? null,
+                                    'physical_state' => $resObj['physical_state'] ?? null,
+                                    'unit' => $resObj['unit'] ?? null,
+                                    'annual_available' => $resObj['annual_available'] ?? null,
+                                    'data_status' => $resObj['data_status'] ?? null
+                                ] : null
+                            ];
+                        }
+                    }
+
+                    $out[] = $machine;
+                }
+            }
+
+            return $out;
         } catch (RequestException $e) {
             $r = $e->response;
             $status = $r ? $r->status() : null;

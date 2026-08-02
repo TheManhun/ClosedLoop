@@ -8,20 +8,42 @@ export default class MachineRepository {
 
     async loadAll() {
         if (this._loaded && Array.isArray(this._machines)) return this._machines;
+        // Try Supabase-backed API first, then fallback to local JSON, then built-in
+        try {
+            const res = await fetch('/api/machines', { credentials: 'same-origin' });
+            if (res.ok) {
+                const machines = await res.json();
+                if (Array.isArray(machines) && machines.length > 0) {
+                    console.info('machine_source: supabase');
+                    this._machines = machines;
+                    this._loaded = true;
+                    return this._machines;
+                }
+            }
+        } catch (e) {
+            // ignore and fall back
+        }
+
         try {
             // Relative import of JSON file under resources/data
             const mod = await import('../../../data/machines.json');
             // Vite exposes JSON as the default export
             const machines = mod.default || mod;
-            if (!Array.isArray(machines)) throw new Error('machines.json must export an array');
-            this._machines = machines;
-            this._loaded = true;
-            return this._machines;
+            if (Array.isArray(machines) && machines.length > 0) {
+                console.info('machine_source: local_json');
+                this._machines = machines;
+                this._loaded = true;
+                return this._machines;
+            }
         } catch (err) {
-            this._machines = [];
-            this._loaded = false;
-            throw err;
+            // ignore
         }
+
+        // Final fallback: empty list (building definitions will supply built-ins)
+        console.info('machine_source: builtin');
+        this._machines = [];
+        this._loaded = true;
+        return this._machines;
     }
 
     async getAll() {

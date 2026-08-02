@@ -1450,8 +1450,22 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
     const netPower = totalGeneration - totalDemand;
     const selfSufficiency = totalDemand > 0 ? (totalGeneration / totalDemand) * 100 : 100;
     const powerTone = netPower > 0 ? 'positive' : (netPower < 0 ? 'negative' : 'neutral');
+
+    const formatValue = (value) => {
+        if (!Number.isFinite(value)) return '0';
+        return `${value.toFixed(value >= 100 ? 0 : 1)} MW`;
+    };
+
+    const formatPercent = (value) => {
+        if (!Number.isFinite(value)) return '0%';
+        return `${value.toFixed(0)}%`;
+    };
+
     const powerValueText = `${netPower > 0 ? '+' : ''}${formatValue(netPower).replace(' MW', ' MW')}`;
     const gridFlowText = gridExport > 0 ? `Export ${formatValue(gridExport).replace(' MW', ' MW')}` : (gridImport > 0 ? `Import ${formatValue(gridImport).replace(' MW', ' MW')}` : 'Balanced');
+
+    const statusLabel = netPower > 0 ? 'Surplus' : (netPower < 0 ? 'Deficit' : 'Balanced');
+    const statusClass = netPower > 0 ? 'surplus' : (netPower < 0 ? 'deficit' : 'balanced');
 
     this._latestPowerMetrics = {
         totalGeneration,
@@ -1467,21 +1481,11 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
         statusClass
     };
 
-    const formatValue = (value) => {
-        if (!Number.isFinite(value)) return '0';
-        return `${value.toFixed(value >= 100 ? 0 : 1)} MW`;
-    };
-
-    const formatPercent = (value) => {
-        if (!Number.isFinite(value)) return '0%';
-        return `${value.toFixed(0)}%`;
-    };
+    
 
     const maxBarValue = Math.max(1, totalGeneration, totalDemand);
     const generationPct = Math.max(8, Math.min(100, (totalGeneration / maxBarValue) * 100));
     const demandPct = Math.max(8, Math.min(100, (totalDemand / maxBarValue) * 100));
-    const statusLabel = netPower > 0 ? 'Surplus' : (netPower < 0 ? 'Deficit' : 'Balanced');
-    const statusClass = netPower > 0 ? 'surplus' : (netPower < 0 ? 'deficit' : 'balanced');
 
     if (container) {
         container.innerHTML = [

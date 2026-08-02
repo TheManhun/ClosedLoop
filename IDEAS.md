@@ -389,6 +389,464 @@ When considering a new feature, ask:
 
 If it does not support the North Star, it may be a distraction from the central purpose of Closed Loop.
 
+## Buffer
+Annual Utilisation Analysis
+
+One of the key differences between Closed Loop and traditional factory simulators is that the focus is annual infrastructure planning rather than real-time production.
+
+Machines do not simply operate as "On" or "Off".
+
+Instead, every machine has an Operating Level that represents the percentage of its annual design capacity being utilised.
+
+# National Infrastructure Planning
+
+The Closed Loop simulator is designed around modular infrastructure hubs, with each hub representing approximately **500,000 people**.
+
+Rather than creating one fixed national design, the simulator allows AI and the user to optimise every hub independently based on regional characteristics.
+
+The objective is to determine the most effective combination of technologies for each location while maximising overall national performance.
+
+---
+
+# Multi-Level Planning
+
+The simulator operates across several planning levels.
+
+```
+Australia
+	↓
+State
+	↓
+Region
+	↓
+Hub (≈500,000 population)
+	↓
+Plant Layout
+	↓
+Machine
+	↓
+Resource Flow
+```
+
+At every level the user can zoom in or out while maintaining complete visibility of how resources move through the system.
+
+---
+
+# AI National Planner
+
+The AI analyses real-world regional data to recommend where hubs should be located.
+
+Examples include:
+
+- Population density
+- Waste generation
+- Agricultural production
+- Industrial activity
+- Water availability
+- Renewable energy potential
+- Brownfield and landfill locations
+- Transport infrastructure
+- Existing utility networks
+
+Each hub becomes unique rather than using identical layouts across the country.
+
+---
+
+# Regional Optimisation
+
+Every hub is independently optimised.
+
+For example:
+
+Victoria
+
+```
+Melbourne
+Industrial focus
+
+Large Waste-to-Energy
+Large Recycling
+Battery Materials
+```
+
+Queensland
+
+```
+Agricultural focus
+
+Bio-Digesters
+Bio-Fertiliser
+Algae
+Biofuel
+```
+
+Western Australia
+
+```
+Mining focus
+
+Rare Earth Refining
+Battery Metals
+Hydrogen
+```
+
+The AI recommends technologies based on regional demand rather than using fixed templates.
+
+---
+
+# AI Infrastructure Recommendations
+
+The AI continuously evaluates the network and provides engineering recommendations.
+
+Example:
+
+```
+South-East Melbourne Hub
+
+Remove
+
+1 Waste-to-Energy Plant
+
+Add
+
+1 Bio-Digester
+
+Reason
+
+Organic waste exceeds energy demand.
+
+Expected Result
+
++18% Fertiliser
+
++7% Biogas
+
+-2% Electricity
+
+Overall National Score
+
+89.4%
+
+→
+
+92.1%
+```
+
+Users may:
+
+- Accept recommendation
+- Reject recommendation
+- Modify recommendation manually
+
+---
+
+# User Control
+
+Closed Loop always remains user driven.
+
+Three operating modes are planned.
+
+### Manual
+
+The user designs every hub manually.
+
+### AI Assisted
+
+The AI recommends improvements while the user remains in control.
+
+### AI Automatic
+
+The AI designs and continually optimises the complete national network.
+
+---
+
+# Annual Utilisation Optimisation
+
+The simulator focuses on annual throughput rather than real-time production.
+
+Machines operate at adjustable utilisation levels.
+
+Example
+
+```
+Waste-to-Energy Plant
+
+Capacity
+
+100,000 tonnes/year
+
+Operating
+
+72%
+
+Actual Processing
+
+72,000 tonnes/year
+```
+
+Multiple identical facilities may operate below maximum capacity to improve resilience and maintenance scheduling.
+
+Example
+
+```
+Current
+
+Plant A
+
+100%
+
+Plant B
+
+20%
+
+Recommended
+
+Plant A
+
+60%
+
+Plant B
+
+60%
+```
+
+---
+
+# Resource Allocation
+
+Many resources may have multiple valid processing pathways.
+
+Example
+
+Organic Biomass
+
+```
+40%
+
+Bio-Fertiliser
+
+35%
+
+Anaerobic Digestion
+
+25%
+
+Waste-to-Energy
+```
+
+The AI automatically reallocates resources depending on the chosen optimisation objective.
+
+Examples include:
+
+- Maximum Profit
+- Public Benefit
+- Lowest Emissions
+- Maximum Closed Loop Completion
+- Water Security
+- Energy Security
+- User Defined
+
+---
+
+# National Dashboard
+
+The National Dashboard provides a live summary of the entire infrastructure network.
+
+Example metrics include:
+
+- Population Served
+- Closed Loop Completion
+- Waste Processed
+- Electricity Generated
+- Water Recovered
+- Biofuel Produced
+- Fertiliser Produced
+- AI Compute Capacity
+- CO₂ Captured
+- Jobs Created
+- Annual Revenue
+- Capital Cost
+- Payback Period
+
+Every statistic can be traced back to the contributing hub, plant, machine and resource flow.
+
+---
+
+# Infrastructure Health
+
+Every hub receives an overall health rating.
+
+🟢 Healthy
+
+Operating efficiently.
+
+🟡 Improvement Available
+
+Infrastructure could be better balanced.
+
+🔴 Bottleneck
+
+Capacity limiting the network.
+
+Clicking a hub reveals exactly which machines or resource pathways are causing the bottleneck.
+
+---
+
+# Explainable AI
+
+Every recommendation made by the AI includes a clear engineering explanation.
+
+Example
+
+```
+Recommendation
+
+Replace one Waste-to-Energy Plant with a Bio-Digester.
+
+Reason
+
+Organic waste availability exceeds electricity demand.
+
+Predicted Outcome
+
++12% Fertiliser
+
++5% Biogas
+
+−1% Electricity
+
++$28M Annual Revenue
+
++2.4% Closed Loop Completion
+```
+
+The AI should never act as a "black box." Every optimisation should be transparent, allowing users to understand and evaluate the reasoning before accepting changes.
+
+---
+
+## Long-Term Vision
+
+The National Infrastructure Planner transforms Closed Loop from a traditional factory simulator into an interactive decision-support platform. Users can design a single hub, optimise an entire region, or model infrastructure for a whole country. AI assists by identifying bottlenecks, reallocating resources, balancing plant utilisation, and recommending infrastructure investments, while keeping the user in complete control of the final design.
+
+Examples:
+
+Waste-to-Energy Plant
+
+Design Capacity
+100,000 t/year
+
+Operating Level
+80%
+
+Actual Throughput
+80,000 t/year
+
+Multiple identical facilities can then share the annual workload.
+
+Example:
+
+Current
+
+Plant A
+100%
+
+Plant B
+20%
+
+Recommended
+
+Plant A
+60%
+
+Plant B
+60%
+
+The total throughput remains unchanged, but the system becomes more resilient, easier to maintain, and better prepared for future growth.
+
+Utilisation Analysis
+
+Every machine includes a Utilisation tab.
+
+The purpose of this tab is not to display storage levels.
+
+Instead, it analyses how much of the available annual resource is successfully processed.
+
+Example:
+
+Municipal Waste
+
+Generated
+500,000 t/year
+
+Processed
+100,000 t/year
+
+Processing Rate
+20%
+
+Unprocessed
+400,000 t/year
+
+The simulator can then recommend:
+
+Additional facilities required
+Capacity upgrades
+Alternative processing pathways
+Expected capital cost
+Estimated revenue improvements
+Closed Loop Optimisation
+
+Rather than simply telling users to build another machine, the simulator should act as an engineering advisor.
+
+For example:
+
+Current Network
+
+Waste-to-Energy
+
+Plant 1
+100%
+
+Plant 2
+100%
+
+Plant 3
+40%
+
+Recommendation:
+
+Optimised Network
+
+Plant 1
+80%
+
+Plant 2
+80%
+
+Plant 3
+80%
+
+Benefits:
+
+Improved redundancy
+Better maintenance scheduling
+Capacity for population growth
+Reduced operational stress
+More resilient infrastructure
+Long-Term Vision
+
+Closed Loop should evolve beyond showing what is connected.
+
+It should explain:
+
+Where the bottlenecks are.
+Which resources are under-utilised.
+Which technologies require expansion.
+How much additional infrastructure is needed.
+The estimated capital investment.
+The estimated increase in annual processing.
+The effect on the overall Closed Loop Completion score.
+
 ---
 
 ## AI Engineering Team
@@ -519,3 +977,188 @@ It may help students discover a passion for engineering, assist researchers in e
 We cannot predict where the next breakthrough in circular economy thinking will come from.
 
 But we can build a place where more people have the opportunity to find it.
+
+# Collaborative Research Profiles
+
+Closed Loop should support multiple technology profiles rather than a single fixed database.
+
+The simulator should allow users to switch between different engineering datasets while keeping the same plant layout.
+
+Examples:
+
+- Verified Technologies
+- CSIRO
+- University of Melbourne
+- MIT
+- Fraunhofer Institute
+- My Research
+- Project-Specific Research
+- Future Closed Loop
+
+Changing the active profile automatically recalculates the entire simulator using that profile's machine efficiencies, resource outputs, economics, and operating assumptions.
+
+The plant remains identical.
+
+Only the engineering knowledge changes.
+
+---
+
+# Technology Branches
+
+Technology profiles should behave similarly to software version control.
+
+The official **Verified** database remains unchanged.
+
+Researchers and organisations may create independent branches containing modified machine data.
+
+Examples include:
+
+- Improved efficiencies
+- Alternative chemical pathways
+- Different operating temperatures
+- New catalysts
+- Lower energy consumption
+- Additional resource outputs
+
+Branches never overwrite the official database.
+
+Instead, users choose which branch they wish to simulate.
+
+---
+
+# Research Sandbox
+
+Every user should be able to create their own experimental technology branch.
+
+This allows researchers, universities, companies and hobbyists to safely explore new ideas without affecting the verified knowledge base.
+
+Examples:
+
+- New machine concepts
+- Experimental outputs
+- Modified efficiencies
+- Prototype technologies
+- Alternative resource pathways
+
+Projects created with custom technologies remain compatible while clearly identifying which technologies have been modified.
+
+---
+
+# Explainable Engineering
+
+Every machine value should remain fully traceable.
+
+Selecting a value should reveal:
+
+- Source organisation
+- Research paper
+- Publication
+- Patent (if applicable)
+- Technology Readiness Level (TRL)
+- Confidence rating
+- Date updated
+- Notes and assumptions
+
+Users should always understand where every engineering assumption originated.
+
+---
+
+# AI Research Comparison
+
+The AI should compare technology branches rather than simply recommending one.
+
+Example:
+
+Verified
+
+- Efficiency: 82%
+- Hydrogen Yield: 2%
+
+University of Melbourne
+
+- Efficiency: 89%
+- Hydrogen Yield: 9%
+
+CSIRO
+
+- Efficiency: 85%
+- Lower energy consumption
+- Higher confidence
+
+The AI should explain the engineering trade-offs rather than simply selecting a winner.
+
+---
+
+# Future Closed Loop
+
+Future Closed Loop is an experimental AI-generated technology profile.
+
+Rather than representing current engineering practice, it combines ideas from reputable research organisations to model what future infrastructure could look like if promising technologies mature successfully.
+
+This profile should never replace the Verified profile.
+
+Instead, it provides a possible future scenario for discussion and exploration.
+
+Possible data sources may include:
+
+- Universities
+- Government research organisations
+- Scientific journals
+- Pilot plants
+- Conference publications
+- Peer-reviewed research
+
+All assumptions should remain transparent and clearly labelled as projections.
+
+---
+
+# Collaborative Engineering Platform
+
+Closed Loop has the potential to become more than a simulator.
+
+It could become a collaborative engineering platform where researchers contribute technology improvements while maintaining compatibility with a shared engineering framework.
+
+The simulator becomes a common environment where different research groups can compare technologies under identical conditions.
+
+Rather than debating isolated machine performance, researchers can evaluate how a new technology affects an entire regional or national circular economy.
+
+---
+
+# AI Knowledge Graph
+
+Every machine, resource, transport system and research paper forms part of a connected engineering knowledge graph.
+
+The AI can use this graph to:
+
+- Explain technologies
+- Compare research
+- Identify bottlenecks
+- Recommend infrastructure improvements
+- Suggest alternative processing pathways
+- Highlight gaps where new research could have the greatest impact
+
+---
+
+# Long-Term Vision
+
+Closed Loop should not simply answer:
+
+> "What is the best design?"
+
+It should also help answer:
+
+- What can we build today?
+- What could we build if current research succeeds?
+- Which emerging technologies have the greatest potential?
+- Where should future research be focused?
+- How would a breakthrough in one technology affect an entire circular economy?
+
+By combining verified engineering data, collaborative research branches and explainable AI, Closed Loop could evolve into a living engineering knowledge platform where education, research and infrastructure planning all contribute to a shared understanding of sustainable systems.
+
+---
+
+I think there's one sentence that perfectly captures this entire idea, and I'd put it at the very end of the document:
+
+> **Closed Loop is designed to become the GitHub and Wikipedia of circular economy engineering—an interactive, AI-assisted platform where verified knowledge, experimental ideas and future technologies can be explored together through a living systems model.**
+
+That's a big vision, but it also gives the project a very clear identity. It's no longer "a simulator"; it's a platform for building, comparing and evolving engineering knowledge over time.
