@@ -255,18 +255,51 @@ export default class MachineInfoPanel {
         resourceItems.slice(0, 6).forEach((item) => {
             const row = document.createElement('div');
             row.className = 'operations-centre-resource-row';
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '8px';
+            row.style.padding = '8px 6px';
+            row.style.cursor = 'pointer';
             const marker = document.createElement('span');
             marker.className = 'operations-centre-resource-marker';
-            marker.style.background = item.color;
+            marker.style.width = '12px'; marker.style.height = '12px'; marker.style.borderRadius = '6px'; marker.style.background = item.color;
             const label = document.createElement('span');
             label.className = 'operations-centre-resource-name';
             label.textContent = item.name;
+            label.style.flex = '1';
             const meta = document.createElement('span');
             meta.className = 'operations-centre-resource-meta';
             meta.textContent = `${item.amount} · ${item.percent}`;
+            meta.style.opacity = '0.8';
             row.appendChild(marker);
             row.appendChild(label);
             row.appendChild(meta);
+            // clicking a resource row should emit selection via EventBus using the loaded resource record when available
+            row.addEventListener('click', async (ev) => {
+                try {
+                    const scene = window.__simulatorScene;
+                    if (!scene) return;
+                    let resourceRecord = null;
+                    try {
+                        // try to load resources via ResourceRepository if available
+                        const Repo = (await import('../data/ResourceRepository.js')).default;
+                        const repo = new Repo();
+                        const resources = await repo.getAll();
+                        if (Array.isArray(resources) && resources.length) {
+                            resourceRecord = resources.find(r => (r.stable_key && r.stable_key.toString().toLowerCase() === (item.name || '').toString().toLowerCase().replace(/ /g,'_')) || (r.name && r.name.toString().toLowerCase() === (item.name || '').toString().toLowerCase()));
+                        }
+                    } catch (e) {
+                        // ignore repo load errors
+                    }
+                    // Fallback: construct minimal record with name if no loaded record
+                    if (!resourceRecord) {
+                        resourceRecord = { stable_key: (item.name || '').toString().toLowerCase().replace(/ /g,'_'), name: item.name };
+                    }
+                    try { if (scene._eventBus && typeof scene._eventBus.emit === 'function') scene._eventBus.emit('selection:changed', { type: 'resource', stable_key: resourceRecord.stable_key, name: resourceRecord.name, resource: resourceRecord }); } catch (e) {}
+                    // close the operations centre/dialog
+                    try { if (this.el) this.el.style.display = 'none'; } catch (e) {}
+                } catch (e) {}
+            });
             resourceList.appendChild(row);
         });
         resourcesContent.appendChild(resourceList);

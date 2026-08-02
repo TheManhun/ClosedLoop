@@ -8,6 +8,8 @@ import BuildingManager from './simulator/managers/BuildingManager.js';
 import InputHandler from './simulator/core/InputHandler.js';
 import MachineInfoPanel from './simulator/ui/MachineInfoPanel.js';
 import ContextMenu from './simulator/ui/ContextMenu.js';
+import TechnologyGraphService from './simulator/services/TechnologyGraphService.js';
+import ContextPanel from './simulator/ui/ContextPanel.js';
 import ConnectionDefinitions from './simulator/data/ConnectionDefinitions.js';
 import ConnectionManager from './simulator/managers/ConnectionManager.js';
 import ConnectionController from './simulator/controllers/ConnectionController.js';
@@ -153,7 +155,21 @@ class PrototypeScene extends Phaser.Scene {
                     _toolboxTooltip = document.createElement('div'); _toolboxTooltip.id = 'toolbox-tooltip'; _toolboxTooltip.className = 'toolbox-tooltip'; _toolboxTooltip.style.display = 'none'; document.body.appendChild(_toolboxTooltip);
                 }
                 // group
+                // Map incoming categories to canonical categories for the toolbox
+                const canonicalCategory = (c) => {
+                    if (!c) return 'Infrastructure';
+                    const s = String(c).toLowerCase();
+                    if (/(process|processing|processes|process-unit|manufactur)/.test(s)) return 'Processing';
+                    if (/(energy|power|electrical)/.test(s)) return 'Energy';
+                    if (/(water|wastewater|sewerage|treatment)/.test(s)) return 'Water';
+                    if (/(storage|tank|warehouse|biogas)/.test(s)) return 'Storage';
+                    if (/(infrastructure|infra|grid|distribution)/.test(s)) return 'Infrastructure';
+                    if (/(digital|data|ai|server|datacentre|datacenter)/.test(s)) return 'Digital Infrastructure';
+                    if (/(connection|connections|conveyor|power|gas|water)/.test(s)) return 'Connections';
+                    return s.charAt(0).toUpperCase() + s.slice(1);
+                };
                 const groups = {};
+                const seen = new Set();
                 const builtInMachines = [
                     {
                         id: 'distributionBoard',
@@ -193,29 +209,44 @@ class PrototypeScene extends Phaser.Scene {
                     }
                 ];
                 const repoMachines = Array.isArray(machines) ? machines : [];
-                const toolboxMachines = [...builtInMachines, ...repoMachines.filter((m) => (m.defKey || m.id) !== 'distributionBoard')];
+                // Exclude resource/source machines and any non-placeable machines from the toolbox.
+                const repoFiltered = repoMachines.filter(m => {
+                    try {
+                        const cat = (m.category || '').toString().toLowerCase();
+                        if (cat === 'source' || cat === 'resource') return false;
+                        if (m.placeable === false) return false;
+                    } catch (e) {}
+                    return true;
+                });
+                const toolboxMachines = [...builtInMachines, ...repoFiltered.filter((m) => (m.defKey || m.id) !== 'distributionBoard')];
                 if (toolboxMachines.length === 0) return;
                 toolboxMachines.forEach((m) => {
-                    const cat = (m.category || 'other').toString();
-                    groups[cat] = groups[cat] || [];
-                    groups[cat].push(m);
+                    try {
+                        const key = (m.defKey || m.stable_key || String(m.id || m.name || '')).toString();
+                        if (seen.has(key)) return; // dedupe
+                        seen.add(key);
+                        const cat = canonicalCategory(m.category);
+                        groups[cat] = groups[cat] || [];
+                        // ensure each machine stores canonical category for display
+                        m._canonicalCategory = cat;
+                        groups[cat].push(m);
+                    } catch (e) { /* ignore malformed entries */ }
                 });
-                const categoryDisplay = (c)=>{ const map={
-                    agriculture: '🌿 Agriculture',
-                    process: '⚙ Processing',
-                    infrastructure: '⚡ Energy',
-                    gas: '💨 Gas',
-                    'electrical infrastructure': '⚡ Electrical Infrastructure',
-                    manufacturing: '🏭 Manufacturing',
-                    recycling: '♻ Recycling',
-                    water: '💧 Water',
-                    storage: '📦 Storage',
-                    research: '🧪 Research',
-                    source: '📦 Sources',
-                    transport: '🚚 Transport',
-                    other: '• Other'
-                }; return map[c] || (c? (c.charAt(0).toUpperCase()+c.slice(1)) : 'Other'); };
-                Object.keys(groups).sort().forEach(cat=>{
+                const categoryDisplay = (c) => {
+                    if (!c) return 'Infrastructure';
+                    const map = {
+                        'Processing': '⚙ Processing',
+                        'Energy': '⚡ Energy',
+                        'Water': '💧 Water',
+                        'Storage': '📦 Storage',
+                        'Infrastructure': '🏗 Infrastructure',
+                        'Digital Infrastructure': '🖥 Digital Infrastructure',
+                        'Connections': '🔗 Connections'
+                    };
+                    return map[c] || c;
+                };
+
+                Object.keys(groups).sort().forEach(cat => {
                     const section=document.createElement('div'); section.className='toolbox-category';
                     const header=document.createElement('div'); header.className='toolbox-category-header'; header.style.display='flex'; header.style.justifyContent='space-between'; header.style.alignItems='center'; header.style.padding='6px 4px'; header.style.cursor='pointer';
                     const title=document.createElement('div');
@@ -237,7 +268,7 @@ class PrototypeScene extends Phaser.Scene {
 
                         const text=document.createElement('div'); text.style.flex='1'; text.style.minWidth='0';
                         const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = m.name || (m.defKey || m.id);
-                        const catline=document.createElement('div'); catline.textContent = categoryDisplay(m.category||''); catline.className = 'toolbox-card-category';
+                        const catline=document.createElement('div'); catline.textContent = categoryDisplay(m._canonicalCategory || (m.category||'')); catline.className = 'toolbox-card-category';
                         text.appendChild(nm); text.appendChild(catline);
 
                         card.appendChild(iconWrap); card.appendChild(text);
@@ -397,6 +428,7 @@ class PrototypeScene extends Phaser.Scene {
 
                 // Queue image loads for Phaser and extend building definitions to use scene texture keys
                 const queued = [];
+                const queuedMap = {};
                 machines.forEach((m) => {
                     const id = String(m.id);
                     const textureKey = m.defKey ? `machine-${m.defKey}` : `machine-${id}`;
@@ -422,6 +454,7 @@ class PrototypeScene extends Phaser.Scene {
                             if (!fetchScene.textures.exists(textureKey) && !queued.includes(textureKey)) {
                                 fetchScene.load.image(textureKey, url);
                                 queued.push(textureKey);
+                                queuedMap[textureKey] = url;
                             }
                         } catch (e) {
                             console.warn('Failed to queue image load for', m.defKey || id, url, e);
@@ -435,6 +468,22 @@ class PrototypeScene extends Phaser.Scene {
                     const loadErrors = [];
                     const onLoadError = (file) => {
                         loadErrors.push({ key: file.key, url: file.src });
+                        try {
+                            // Create a simple fallback canvas texture so renderers have something to use
+                            if (!fetchScene.textures.exists(file.key) && fetchScene.textures && typeof fetchScene.textures.createCanvas === 'function') {
+                                const canvasTex = fetchScene.textures.createCanvas(file.key, 64, 64);
+                                try {
+                                    const ctx = canvasTex.getContext();
+                                    ctx.fillStyle = '#777';
+                                    ctx.fillRect(0, 0, 64, 64);
+                                    canvasTex.refresh();
+                                } catch (e) {
+                                    // ignore drawing errors
+                                }
+                            }
+                        } catch (e) {
+                            // ignore fallback creation errors
+                        }
                         console.warn('Machine image load error', file.key, file.src);
                     };
                     fetchScene.load.on('loaderror', onLoadError);
@@ -448,274 +497,49 @@ class PrototypeScene extends Phaser.Scene {
                     try { fetchScene.load.start(); } catch (e) { /* ignore */ }
                 }
 
-                // Populate left Toolbox (existing #toolbox) with machines from repository
+                // Replace the old toolbox catalogue with the ContextPanel driven by TechnologyGraphService
                 try {
                     const toolbox = document.getElementById('toolbox');
                     const toolboxBody = document.getElementById('toolbox-body');
                     if (toolbox && toolboxBody) {
-                        // Build search input and categories container
-                        const search = document.createElement('input');
-                        search.type = 'search';
-                        search.placeholder = 'Search machines...';
-                        search.id = 'toolbox-search';
-                        search.style.width = '100%';
-                        search.style.boxSizing = 'border-box';
-                        search.style.padding = '8px';
-                        search.style.marginBottom = '8px';
-
-                        const container = document.createElement('div');
-                        container.id = 'toolbox-categories';
-
+                        // Clear existing contents
                         toolboxBody.innerHTML = '';
-                        toolboxBody.appendChild(search);
-                        toolboxBody.appendChild(container);
-                        // Expand toolbox by default for new UI (force styles in case other scripts manage state)
+                        // Ensure toolbox expanded and layout adjusted
+                        try { setToolboxState(true); toolbox.style.width = '280px'; const simRoot = document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft = '280px'; } catch (e) {}
+
+                        // Build TechnologyGraphService using loaded machines (machines variable is in scope)
                         try {
-                            setToolboxState(true);
-                            toolbox.style.width = '280px';
-                            const simRoot = document.getElementById('simulator-root'); if (simRoot) simRoot.style.marginLeft = '280px';
-                        } catch (e) {}
+                            const graphSvc = new TechnologyGraphService({ machines: machines });
+                            const panelContainer = document.createElement('div'); panelContainer.id = 'context-panel-container'; panelContainer.style.height = '100%'; panelContainer.style.overflow = 'auto';
+                            toolboxBody.appendChild(panelContainer);
+                            // Create and mount ContextPanel
+                            const ctxPanel = new ContextPanel({ container: panelContainer, graphService: graphSvc });
+                            // initial render (no selection)
+                            ctxPanel.render();
 
-                        // Group machines by category
-                        const builtInToolboxMachines = [
-                            {
-                                id: 'distributionBoard',
-                                defKey: 'distributionBoard',
-                                name: 'Power Board',
-                                category: 'infrastructure',
-                                description: 'Receives electrical power and distributes it to up to four connected machines.',
-                                image: 'Distribution_Board.png',
-                                powerRequired: 0,
-                                powerProduced: 0,
-                                footprint: [3, 2],
-                                placeable: true
-                            },
-                            {
-                                id: 'biogasTank',
-                                defKey: 'biogasTank',
-                                name: 'Biogas Tank',
-                                category: 'gas',
-                                description: 'Placeholder gas storage hub for the development chain.',
-                                image: 'biogastank.png',
-                                powerRequired: 0,
-                                powerProduced: 0,
-                                footprint: [2, 2],
-                                placeable: true
-                            },
-                            {
-                                id: 'gasGenerator',
-                                defKey: 'gasGenerator',
-                                name: 'Gas Generator',
-                                category: 'gas',
-                                description: 'Placeholder gas-to-power conversion unit.',
-                                image: 'gasgenerator.png',
-                                powerRequired: 0,
-                                powerProduced: 0,
-                                footprint: [2, 2],
-                                placeable: true
+                            // Wire selection events via eventBus
+                            if (fetchScene._eventBus) {
+                                fetchScene._eventBus.on('selection:changed', (sel) => {
+                                    try {
+                                        if (!sel) { ctxPanel.setSelection(null); ctxPanel.setMode('suggested'); return; }
+                                        if (sel.type === 'resource') { ctxPanel.setSelection({ type: 'resource', stable_key: sel.stable_key }); ctxPanel.setMode('suggested'); return; }
+                                        if (sel.type === 'machine') { ctxPanel.setSelection({ type: 'machine', stable_key: sel.stable_key }); ctxPanel.setMode('suggested'); return; }
+                                    } catch (e) { /* ignore listener errors */ }
+                                });
                             }
-                        ];
-                        const toolboxMachines = [...builtInToolboxMachines, ...Array.isArray(machines) ? machines.filter((m) => (m.defKey || m.id) !== 'distributionBoard') : []];
-                        const groups = {};
-                        toolboxMachines.forEach(m => {
-                            const cat = (m.category || 'other').toString();
-                            groups[cat] = groups[cat] || [];
-                            groups[cat].push(m);
-                        });
 
-                        // Category display name mapping (emoji + name)
-                        const categoryDisplay = (c) => {
-                            const map = {
-                                agriculture: '🌿 Agriculture',
-                                process: '⚙ Processing',
-                                infrastructure: '⚡ Energy',
-                                gas: '💨 Gas',
-                                manufacturing: '🏭 Manufacturing',
-                                recycling: '♻ Recycling',
-                                water: '💧 Water',
-                                storage: '📦 Storage',
-                                research: '🧪 Research',
-                                source: '📦 Sources',
-                                transport: '🚚 Transport',
-                                other: '• Other'
-                            };
-                            return map[c] || (c ? (c.charAt(0).toUpperCase() + c.slice(1)) : 'Other');
-                        };
-
-                        // Create category sections
-                        Object.keys(groups).sort().forEach(cat => {
-                            const section = document.createElement('div');
-                            section.className = 'toolbox-category';
-                            const header = document.createElement('div');
-                            header.className = 'toolbox-category-header';
-                            header.style.display = 'flex';
-                            header.style.justifyContent = 'space-between';
-                            header.style.alignItems = 'center';
-                            header.style.padding = '6px 4px';
-                            header.style.cursor = 'pointer';
-                            const title = document.createElement('div');
-                            const titleName = document.createElement('span'); titleName.className = 'toolbox-category-title'; titleName.textContent = categoryDisplay(cat);
-                            const titleCount = document.createElement('span'); titleCount.className = 'toolbox-category-count'; titleCount.textContent = ' (' + groups[cat].length + ')';
-                            title.appendChild(titleName); title.appendChild(titleCount);
-                            title.style.fontWeight = '700';
-                            title.style.fontSize = '13px';
-                            const collapseBtn = document.createElement('button');
-                            collapseBtn.textContent = '▾';
-                            collapseBtn.setAttribute('aria-expanded', 'true');
-                            collapseBtn.style.background = 'transparent';
-                            collapseBtn.style.border = '0';
-                            collapseBtn.style.color = '#9ca3af';
-                            collapseBtn.style.cursor = 'pointer';
-                            collapseBtn.className = 'toolbox-collapse-btn';
-                            header.appendChild(title);
-                            header.appendChild(collapseBtn);
-
-                            const list = document.createElement('div');
-                            list.className = 'toolbox-category-list';
-                            list.style.display = 'flex';
-                            list.style.flexDirection = 'column';
-                            list.style.gap = '8px';
-                            list.style.padding = '6px 4px 12px 4px';
-
-                            groups[cat].forEach(m => {
-                                    const card = document.createElement('div');
-                                    card.className = 'toolbox-card';
-                                    card.style.display = 'flex';
-                                    card.style.alignItems = 'center';
-                                    card.style.gap = '12px';
-                                    card.style.padding = '10px';
-                                    card.style.borderRadius = '8px';
-                                    card.style.cursor = 'pointer';
-                                    card.style.wordBreak = 'break-word';
-                                    card.setAttribute('data-defkey', m.defKey || String(m.id));
-
-                                    const iconWrap = document.createElement('div'); iconWrap.className = 'toolbox-card-icon';
-                                    const img = document.createElement('img');
-                                    const repoIcon = (typeof fetchScene._machineRepoIconPath === 'function') ? fetchScene._machineRepoIconPath(m) : null;
-                                    img.src = repoIcon || (m.image ? ('/' + m.image) : '/processingplant.png');
-                                    img.alt = m.name || '';
-                                    img.style.width = '56px'; img.style.height = '56px'; img.style.objectFit = 'contain'; img.style.flex = '0 0 56px';
-                                    iconWrap.appendChild(img);
-
-                                    const text = document.createElement('div');
-                                    text.style.flex = '1'; text.style.minWidth='0';
-                                    const nm = document.createElement('div'); nm.textContent = m.name || (m.defKey || m.id); nm.className='toolbox-card-name';
-                                    const catline = document.createElement('div'); catline.textContent = categoryDisplay((m.category || '').toString()); catline.className = 'toolbox-card-category';
-                                    text.appendChild(nm); text.appendChild(catline);
-
-                                    card.appendChild(iconWrap); card.appendChild(text);
-
-                                    // Tooltip using local data
-                                    card.addEventListener('mouseenter', ()=>{
-                                        try {
-                                            const tooltip = document.getElementById('toolbox-tooltip');
-                                            if (!tooltip) return;
-                                            const parts = [];
-                                            if (m.name) parts.push('<div class="title">'+m.name+'</div>');
-                                            if (m.description) parts.push('<div class="meta">'+m.description+'</div>');
-                                            if (Array.isArray(m.inputs) && m.inputs.length) parts.push('<div class="line"><strong>Inputs:</strong> '+m.inputs.map(i=>((i.quantity||i.amount||'')+(i.units?(' '+i.units):'')+' '+(i.resourceId||i.name||''))).join(', ')+'</div>');
-                                            if (Array.isArray(m.outputs) && m.outputs.length) parts.push('<div class="line"><strong>Outputs:</strong> '+m.outputs.map(o=>((o.quantity||o.amount||'')+(o.units?(' '+o.units):'')+' '+(o.resourceId||o.name||''))).join(', ')+'</div>');
-                                            if (m.powerRequired !== undefined) parts.push('<div class="line"><strong>Power Req:</strong> '+m.powerRequired+'</div>');
-                                            if (m.powerProduced !== undefined) parts.push('<div class="line"><strong>Power Prod:</strong> '+m.powerProduced+'</div>');
-                                            tooltip.innerHTML = parts.join(''); tooltip.style.display='block';
-                                            const rect = card.getBoundingClientRect();
-                                            const left = Math.min(window.innerWidth - 340, rect.right + 8);
-                                            const top = Math.max(8, rect.top + (rect.height/2) - 40);
-                                            tooltip.style.left = left + 'px'; tooltip.style.top = top + 'px';
-                                        } catch(e){}
-                                    });
-                                    card.addEventListener('mouseleave', ()=>{ const tooltip = document.getElementById('toolbox-tooltip'); if (tooltip) tooltip.style.display='none'; });
-
-                                    card.addEventListener('click', (ev) => {
-                                        ev.preventDefault();
-                                        const controller = fetchScene._placementController;
-                                        const key = m.defKey || String(m.id);
-                                        if (controller && typeof controller.beginPlacement === 'function') {
-                                            try { controller.beginPlacement(key); } catch (e) { /* ignore */ }
-                                        }
-                                        // mark selected visually
-                                        try { document.querySelectorAll('.toolbox-card.selected').forEach(c=>c.classList.remove('selected')); card.classList.add('selected');
-                                            const watcher = setInterval(()=>{ try { if (!controller || typeof controller.isPlacing !== 'function' || !controller.isPlacing()) { card.classList.remove('selected'); clearInterval(watcher); } } catch(e){ card.classList.remove('selected'); clearInterval(watcher);} }, 200);
-                                        } catch(e){}
-                                    });
-
-                                    list.appendChild(card);
-                                });
-
-                            header.addEventListener('click', () => {
-                                const expanded = list.style.display !== 'none';
-                                list.style.display = expanded ? 'none' : 'flex';
-                                collapseBtn.textContent = expanded ? '▸' : '▾';
-                                collapseBtn.setAttribute('aria-expanded', String(!expanded));
+                            // Wire placement start from clicking suggestion cards: listen for custom event
+                            panelContainer.addEventListener('contextpanel:place', (ev) => {
+                                try {
+                                    const defKey = ev.detail && ev.detail.defKey;
+                                    if (!defKey) return;
+                                    // begin placement for defKey
+                                    try { if (fetchScene._placementController) fetchScene._placementController.beginPlacement(defKey); } catch (e) {}
+                                } catch (e) {}
                             });
-
-                            section.appendChild(header);
-                            section.appendChild(list);
-                            container.appendChild(section);
-                        });
-
-                            // Add Connections category (power cables, conveyors, etc.)
-                            try {
-                                const connDefs = ConnectionDefinitions || {};
-                                const connSection = document.createElement('div');
-                                connSection.className = 'toolbox-category';
-                                const connHeader = document.createElement('div');
-                                connHeader.className = 'toolbox-category-header';
-                                connHeader.style.display = 'flex';
-                                connHeader.style.justifyContent = 'space-between';
-                                connHeader.style.alignItems = 'center';
-                                connHeader.style.padding = '6px 4px';
-                                connHeader.style.cursor = 'pointer';
-                                const connTitle = document.createElement('div');
-                                const connTitleName = document.createElement('span'); connTitleName.className = 'toolbox-category-title'; connTitleName.textContent = 'Connections';
-                                const connTitleCount = document.createElement('span'); connTitleCount.className = 'toolbox-category-count'; connTitleCount.textContent = ' (' + Object.keys(connDefs).length + ')';
-                                connTitle.appendChild(connTitleName); connTitle.appendChild(connTitleCount);
-                                connTitle.style.fontWeight = '700'; connTitle.style.fontSize = '13px';
-                                const connCollapse = document.createElement('button'); connCollapse.textContent = '▾'; connCollapse.setAttribute('aria-expanded','true'); connCollapse.style.background='transparent'; connCollapse.style.border='0'; connCollapse.style.color='#9ca3af'; connCollapse.style.cursor='pointer'; connCollapse.className='toolbox-collapse-btn';
-                                connHeader.appendChild(connTitle); connHeader.appendChild(connCollapse);
-                                const connList = document.createElement('div'); connList.className = 'toolbox-category-list'; connList.style.display = 'flex'; connList.style.flexDirection = 'column'; connList.style.gap = '8px'; connList.style.padding = '6px 4px 12px 4px';
-
-                                Object.keys(connDefs).forEach(k => {
-                                    const d = connDefs[k];
-                                    const ccard = document.createElement('div'); ccard.className = 'toolbox-card'; ccard.style.display='flex'; ccard.style.alignItems='center'; ccard.style.gap='12px'; ccard.style.padding='10px'; ccard.style.borderRadius='8px'; ccard.style.cursor='pointer'; ccard.style.wordBreak='break-word';
-                                    if (!d || d.enabled === false) ccard.classList.add('disabled');
-                                    const iconWrap = document.createElement('div'); iconWrap.className='toolbox-card-icon'; iconWrap.style.width='56px'; iconWrap.style.height='56px'; iconWrap.style.display='flex'; iconWrap.style.alignItems='center'; iconWrap.style.justifyContent='center'; iconWrap.style.background='#0d0f10'; iconWrap.style.borderRadius='6px';
-                                    const icon = document.createElement('div'); icon.textContent = d && d.key === 'power' ? '⚡' : (d && d.key === 'conveyor' ? '▤' : (d && d.key === 'water' ? '💧' : (d && d.key === 'gas' ? '💨' : '🔗'))); icon.style.fontSize='22px'; iconWrap.appendChild(icon);
-                                    const txt = document.createElement('div'); txt.style.flex='1'; txt.style.minWidth='0'; const nm = document.createElement('div'); nm.className='toolbox-card-name'; nm.textContent = (d && d.label) || (d && d.key) || k; const sub = document.createElement('div'); sub.className='toolbox-card-category'; sub.textContent = (d && d.renderer) || (d && d.comingSoon ? 'Coming soon' : 'Connection'); txt.appendChild(nm); txt.appendChild(sub);
-                                    ccard.appendChild(iconWrap); ccard.appendChild(txt);
-
-                                    ccard.addEventListener('click', (ev) => {
-                                        ev.preventDefault();
-                                        try { if (!d || d.enabled === false) return; } catch(e){}
-                                        // Cancel placement mode if active
-                                        try { if (fetchScene._placementController && fetchScene._placementController.isPlacing()) fetchScene._placementController.cancelPlacement(); } catch(e){}
-                                        // Begin connection via ConnectionController
-                                        try { if (fetchScene._connectionController) fetchScene._connectionController.beginConnection(d.key, d); } catch(e){}
-                                        // Visual selection state for toolbox cards
-                                        try { document.querySelectorAll('.toolbox-card.selected').forEach(c=>c.classList.remove('selected')); ccard.classList.add('selected');
-                                            const watcher = setInterval(()=>{ try { if (!fetchScene._connectionController || typeof fetchScene._connection_controller !== 'function' || !fetchScene._connectionController.isConnecting()) { ccard.classList.remove('selected'); clearInterval(watcher); } } catch(e){ ccard.classList.remove('selected'); clearInterval(watcher);} }, 200);
-                                        } catch(e){}
-                                    });
-
-                                    connList.appendChild(ccard);
-                                });
-
-                                connHeader.addEventListener('click', ()=>{ const expanded = connList.style.display !== 'none'; connList.style.display = expanded ? 'none' : 'flex'; connCollapse.textContent = expanded ? '▸' : '▾'; connCollapse.setAttribute('aria-expanded', String(!expanded)); });
-                                connSection.appendChild(connHeader); connSection.appendChild(connList); container.appendChild(connSection);
-                            } catch(e) { /* ignore */ }
-
-                        // Search filter
-                        search.addEventListener('input', (e) => {
-                            const q = (e.target.value || '').toLowerCase().trim();
-                            container.querySelectorAll('.toolbox-card').forEach(card => {
-                                const name = (card.querySelector('div') && card.querySelector('div').innerText) || '';
-                                card.style.display = (!q || name.toLowerCase().includes(q)) ? '' : 'none';
-                            });
-                        });
+                        } catch (e) { console.warn('ContextPanel init failed', e); }
                     }
-                } catch (e) {
-                    console.warn('Toolbox population failed', e);
-                }
+                } catch (e) { /* ignore */ }
                 // Ensure machine info panel is attached after toolbox population
                 try {
                     const panelEl = this._machineInfoPanel._create();

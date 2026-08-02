@@ -104,6 +104,11 @@ export default class InputHandler {
             if (!record.movable) {
                 this.scene._selectedCell = { ix: record.gridX, iy: record.gridY };
                 if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
+                // Emit selection change for resource/source records
+                try {
+                    const stable = record.stable_key || record.defKey || (this.scene && this.scene._buildingDefs && this.scene._buildingDefs[record.defKey] && this.scene._buildingDefs[record.defKey].stable_key) || null;
+                    try { if (this.scene && this.scene._eventBus && typeof this.scene._eventBus.emit === 'function') this.scene._eventBus.emit('selection:changed', { type: 'resource', stable_key: stable, record }); } catch (e) {}
+                } catch (e) {}
                 try { if (typeof this.scene.showMachineInfoFor === 'function') this.scene.showMachineInfoFor(record); } catch (e) {}
                 return;
             }
@@ -125,6 +130,8 @@ export default class InputHandler {
         // Clicked empty ground: clear selection
         this.scene._selectedCell = null;
         if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
+        // Notify listeners that selection cleared
+        try { if (this.scene && this.scene._eventBus && typeof this.scene._eventBus.emit === 'function') this.scene._eventBus.emit('selection:changed', null); } catch (e) {}
         this.scene._selectedCell = { ix, iy };
         if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
     }
@@ -266,6 +273,8 @@ export default class InputHandler {
                     this.scene._connectionController.cancelConnection();
                     return;
                 }
+                // If not in placement/connection, clear selection
+                try { if (this.buildingManager && typeof this.buildingManager.clearSelection === 'function') this.buildingManager.clearSelection(); } catch (e) {}
             } catch (e) {}
         }
 

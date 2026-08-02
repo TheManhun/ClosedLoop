@@ -287,29 +287,23 @@ export default class BuildingDefinitions {
                         if (!res || !res.ok) return;
                         const json = await res.json();
                         if (!Array.isArray(json) || json.length === 0) return;
-                        // Merge returned API records into _defs
+                        // Merge returned API records into _defs using generic policy
                         for (const m of json) {
                             const id = String(m.id);
                             const existing = this._defs[id] || this._defs[m.defKey] || {};
-                            const merged = Object.assign({}, existing, {
-                                name: m.name || existing.name,
-                                image: m.image || existing.image,
-                                category: m.category || existing.category,
-                                footprint: m.footprint || existing.footprint,
-                                permanent: (m.permanent !== undefined) ? !!m.permanent : existing.permanent,
-                                deletable: (m.deletable !== undefined) ? m.deletable !== false : existing.deletable,
-                                movable: (m.movable !== undefined) ? m.movable !== false : existing.movable,
-                                placeable: (m.placeable !== undefined) ? m.placeable !== false : existing.placeable
-                            });
-                            if (m.stable_key) merged.stable_key = m.stable_key;
-                            if (m.annual_capacity !== undefined) merged.annual_capacity = m.annual_capacity;
-                            if (m.default_operating_level !== undefined) merged.default_operating_level = m.default_operating_level;
-                            this._defs[id] = merged;
-                            if (m.defKey) this._defs[m.defKey] = Object.assign({}, merged);
+                            // Create a merged canonical object preserving builtin metadata
+                            const canonical = this._mergeDefs(existing, m);
+                            // Ensure API engineering fields are present when defined
+                            if (m.stable_key) canonical.stable_key = m.stable_key;
+                            if (m.annual_capacity !== undefined) canonical.annual_capacity = m.annual_capacity;
+                            if (m.default_operating_level !== undefined) canonical.default_operating_level = m.default_operating_level;
+                            // Store canonical under numeric id and all aliases
+                            this._defs[id] = canonical;
+                            if (m.defKey) this._defs[m.defKey] = canonical;
                             if (m.stable_key) {
-                                this._defs[m.stable_key] = Object.assign({}, merged);
+                                this._defs[m.stable_key] = canonical;
                                 const camel = String(m.stable_key).replace(/[_-](.)/g, (s, c) => c ? c.toUpperCase() : '');
-                                if (camel) this._defs[camel] = Object.assign({}, merged);
+                                if (camel) this._defs[camel] = canonical;
                             }
                         }
                         this._machines = json;
@@ -324,14 +318,17 @@ export default class BuildingDefinitions {
             for (const m of machines) {
                 const id = String(m.id);
                 const textureKey = m.defKey ? `machine-${m.defKey}` : `machine-${id}`;
+                // Find any existing builtin def to preserve renderer/compatibility metadata
                 const baseDef = this._defs[id] || this._defs[m.defKey] || {};
-                const powerValue = Number(m.powerRequired ?? m.powerUsage ?? m.electricityRequired ?? m.powerConsumption ?? 0);
+                // Start with a merged canonical object that overlays API engineering fields
+                const canonicalBase = this._mergeDefs(baseDef, m);
+                const powerValue = Number(m.powerRequired ?? m.powerUsage ?? m.electricityRequired ?? m.powerConsumption ?? canonicalBase.powerRequired ?? canonicalBase.power_required ?? 0);
                 const needsPower = Number.isFinite(powerValue) && powerValue > 0;
-                const producesPower = Number.isFinite(Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0)) && Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? 0) > 0;
-                const waterValue = Number(m.waterRequired ?? m.waterDemand ?? m.waterUsage ?? 0);
-                const producesWater = Number.isFinite(Number(m.waterProduced ?? m.waterGenerated ?? 0)) && Number(m.waterProduced ?? m.waterGenerated ?? 0) > 0;
-                const accepts = Array.isArray(baseDef.accepts) ? baseDef.accepts.slice() : [];
-                const provides = Array.isArray(baseDef.provides) ? baseDef.provides.slice() : [];
+                const producesPower = Number.isFinite(Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? canonicalBase.powerProduced ?? canonicalBase.power_produced ?? 0)) && Number(m.powerProduced ?? m.powerGeneration ?? m.powerGenerated ?? m.electricityProduced ?? canonicalBase.powerProduced ?? canonicalBase.power_produced ?? 0) > 0;
+                const waterValue = Number(m.waterRequired ?? m.waterDemand ?? m.waterUsage ?? canonicalBase.waterRequired ?? canonicalBase.water_required ?? 0);
+                const producesWater = Number.isFinite(Number(m.waterProduced ?? m.waterGenerated ?? canonicalBase.waterProduced ?? canonicalBase.water_produced ?? 0)) && Number(m.waterProduced ?? m.waterGenerated ?? canonicalBase.waterProduced ?? canonicalBase.water_produced ?? 0) > 0;
+                const accepts = Array.isArray(canonicalBase.accepts) ? canonicalBase.accepts.slice() : [];
+                const provides = Array.isArray(canonicalBase.provides) ? canonicalBase.provides.slice() : [];
 
                 if (needsPower && !accepts.includes('power')) {
                     accepts.push('power');
@@ -346,17 +343,17 @@ export default class BuildingDefinitions {
                     provides.push('water');
                 }
 
-                const defObj = Object.assign({}, baseDef, {
-                    name: m.name || ('Machine ' + id),
-                    image: m.image || null,
-                    textureKey: textureKey,
-                    category: m.category || 'process',
-                    footprint: m.footprint || [2, 2],
-                    permanent: !!m.permanent,
-                    deletable: m.deletable !== false,
-                    movable: m.movable !== false,
-                    placeable: m.placeable !== false,
-                    suggestedNext: [],
+                const defObj = Object.assign({}, canonicalBase, {
+                    name: m.name || canonicalBase.name || ('Machine ' + id),
+                    image: m.image || canonicalBase.image || null,
+                    textureKey: canonicalBase.textureKey || textureKey,
+                    category: m.category || canonicalBase.category || 'process',
+                    footprint: canonicalBase.footprint || m.footprint || [2, 2],
+                    permanent: (m.permanent !== undefined) ? !!m.permanent : canonicalBase.permanent === true,
+                    deletable: (m.deletable !== undefined) ? m.deletable !== false : canonicalBase.deletable !== false,
+                    movable: (m.movable !== undefined) ? m.movable !== false : canonicalBase.movable !== false,
+                    placeable: (m.placeable !== undefined) ? m.placeable !== false : canonicalBase.placeable !== false,
+                    suggestedNext: canonicalBase.suggestedNext || [],
                     accepts,
                     provides
                 });
@@ -376,26 +373,15 @@ export default class BuildingDefinitions {
                     defObj.provides = [];
                 }
                 // Store under numeric id and also under defKey if provided, to keep compatibility
-                this._defs[id] = defObj;
-                if (m.defKey) {
-                    this._defs[m.defKey] = Object.assign({}, defObj);
-                }
-
-                // Also expose server `stable_key` and a camelCase variant so
-                // lookups that use built-in defKeys (e.g. anaerobicDigester)
-                // will find the API-provided engineering fields.
+                // Store canonical merged object under id and aliases so all keys
+                // point to the same object and retain simulator metadata.
+                const canonical = defObj;
+                this._defs[id] = canonical;
+                if (m.defKey) this._defs[m.defKey] = canonical;
                 if (m.stable_key) {
-                    // raw stable_key (snake_case)
-                    this._defs[m.stable_key] = Object.assign({}, defObj);
-                    // camelCase variant: anaerobic_digester -> anaerobicDigester
+                    this._defs[m.stable_key] = canonical;
                     const camel = String(m.stable_key).replace(/[_-](.)/g, (s, c) => c ? c.toUpperCase() : '');
-                    if (camel) {
-                        // Overwrite existing camel entry if it doesn't contain engineering fields
-                        const existing = this._defs[camel];
-                        if (!existing || !existing.hasOwnProperty('annual_capacity')) {
-                            this._defs[camel] = Object.assign({}, defObj);
-                        }
-                    }
+                    if (camel) this._defs[camel] = canonical;
                 }
             }
 

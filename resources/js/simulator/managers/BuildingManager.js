@@ -250,12 +250,15 @@ export default class BuildingManager {
         // keep simulator visible selection compatible
         try { this.scene._selectedCell = { ix: record.gridX, iy: record.gridY }; } catch (e) {}
         if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
+        // Emit selection change event for UI consumers
+        try { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:changed', { type: 'machine', stable_key: record.stable_key || record.defKey || null, record }); } catch (e) {}
     }
 
     clearSelection() {
         this._selectedId = null;
         try { this.scene._selectedCell = null; } catch (e) {}
         if (typeof this.scene._drawSelection === 'function') this.scene._drawSelection();
+        try { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:changed', null); } catch (e) {}
     }
 
     getSelectedMachine() {

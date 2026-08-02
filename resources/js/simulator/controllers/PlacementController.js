@@ -100,7 +100,9 @@ export default class PlacementController {
         const iy = Math.floor(world.y / gs.minor);
 
         if (this._canPlace(ix, iy)) {
-            this.buildingManager.placeMachine(ix, iy, this._defKey);
+            const rec = this.buildingManager.placeMachine(ix, iy, this._defKey);
+            // Keep newly placed machine selected so context panel updates correctly
+            try { if (rec && typeof this.buildingManager.selectMachine === 'function') this.buildingManager.selectMachine(rec); } catch (e) { /* ignore */ }
         }
         // end single placement
         this.cancelPlacement();
