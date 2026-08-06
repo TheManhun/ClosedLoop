@@ -1,4 +1,5 @@
 import GridRenderer from './GridRenderer.js';
+import CameraController from './CameraController.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -25,9 +26,13 @@ export default class Renderer {
     return import('phaser').then((PhaserModule) => {
       const Phaser = PhaserModule.default || PhaserModule;
 
-      // create GridRenderer before Phaser game so the scene can initialise it in create()
+      // create CameraController and GridRenderer before Phaser game so the scene can initialise them in create()
+      this._camera = new CameraController();
       this._gridRenderer = new GridRenderer();
+      const camera = this._camera;
       const gridRenderer = this._gridRenderer;
+
+      // production: do not expose internals to window
 
       // Create a minimal blank scene that initialises the grid during its create() phase.
       const BlankScene = class extends Phaser.Scene {
@@ -36,7 +41,15 @@ export default class Renderer {
         }
         preload() {}
         create() {
-          // Initialise the grid using the instance captured in closure
+          // Initialise camera and grid using instances captured in closure
+          try {
+            if (typeof camera !== 'undefined' && camera && typeof camera.initialise === 'function') {
+              camera.initialise(this);
+            }
+          } catch (e) {
+            // ignore
+          }
+
           if (typeof gridRenderer !== 'undefined' && gridRenderer && typeof gridRenderer.initialise === 'function') {
             gridRenderer.initialise(this);
           }
@@ -79,6 +92,12 @@ export default class Renderer {
     if (this._gridRenderer) {
       try { this._gridRenderer.destroy(); } catch (e) { /* ignore */ }
       this._gridRenderer = null;
+    }
+
+    // Destroy camera controller before destroying Phaser so it can unbind any references
+    if (this._camera) {
+      try { this._camera.destroy(); } catch (e) { /* ignore */ }
+      this._camera = null;
     }
 
     if (this._game && this._game.destroy) {
