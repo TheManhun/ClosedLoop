@@ -540,7 +540,7 @@ The UI simply displays results.
 
 # Event Manager
 
-Everything communicates through events.
+Behavioural communication between independent subsystems should use EventBus. Constructor dependency injection is allowed for composition, ownership, lifecycle coordination, and access to narrowly defined interfaces.
 
 No globals.
 
