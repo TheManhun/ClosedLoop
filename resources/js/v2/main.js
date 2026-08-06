@@ -30,7 +30,7 @@ export async function run() {
 
   // Load a scenario (bootstrap only)
   // Scenario load intentionally not required for Stage 0 verification.
-  const app = new App({ eventBus, gameEngine, uiManager, scenario: null });
+  const app = new App({ eventBus, renderer, gameEngine, uiManager, scenario: null });
   await app.start();
 }
 

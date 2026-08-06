@@ -10,7 +10,7 @@ export default class UIManager {
 
   initialise() {
     // Minimal Stage 0 UI: render simple textual status block if root exists.
-    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-root') : null;
+    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
     if (root) {
       const lines = [];
       lines.push('Closed Loop V2');
@@ -37,7 +37,7 @@ export default class UIManager {
 
   destroy() {
     this.mounted = false;
-    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-root') : null;
+    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
     if (root) root.innerText = '';
   }
 }

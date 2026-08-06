@@ -21,6 +21,10 @@ test('EventBus subscribe, emit, unsubscribe', () => {
 
 test('App initialises and starts game in order and destroy reverses lifecycle', async () => {
   const calls = [];
+  const renderer = {
+    initialise: () => calls.push('renderer.init'),
+    destroy: () => calls.push('renderer.destroy'),
+  };
   const ui = {
     initialise: () => calls.push('ui.init'),
     destroy: () => calls.push('ui.destroy'),
@@ -30,16 +34,20 @@ test('App initialises and starts game in order and destroy reverses lifecycle', 
     start: () => calls.push('game.start'),
     destroy: () => calls.push('game.destroy'),
   };
-
-  const app = new App({ eventBus: {}, gameEngine: game, uiManager: ui, scenario: null });
+  const app = new App({ eventBus: {}, renderer, gameEngine: game, uiManager: ui, scenario: null });
   await app.start();
-  assert.deepEqual(calls.slice(0, 2), ['ui.init', 'game.init']);
+  // expected initialisation order: renderer, ui, game
+  assert.deepEqual(calls.slice(0, 3), ['renderer.init', 'ui.init', 'game.init']);
   assert(calls.includes('game.start'));
 
   // Destroy should call game.destroy then ui.destroy (order as implemented)
   app.destroy();
-  assert(calls.includes('game.destroy'));
-  assert(calls.includes('ui.destroy'));
+  // ensure destroy order: game.destroy -> ui.destroy -> renderer.destroy
+  const gi = calls.indexOf('game.destroy');
+  const uii = calls.indexOf('ui.destroy');
+  const ri = calls.indexOf('renderer.destroy');
+  assert(gi >= 0 && uii >= 0 && ri >= 0, 'destroy calls missing');
+  assert(gi < uii && uii < ri, 'destroy order incorrect');
 });
 
 test('No fetch() calls exist in V2 modules except possibly ApiCoordinator', () => {
