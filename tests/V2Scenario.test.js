@@ -49,6 +49,21 @@ test('DataLoader.loadScenario stores scenario and links resources when available
   assert.equal(s.scenario_resources[0].resource_canonical.name, 'residual waste');
 });
 
+test('DataLoader.loadScenario preserves embedded resource.visual_type from API payload', async () => {
+  const scenarioFixture = {
+    id: 2,
+    name: 'Dandenong South Closed Loop Hub',
+    scenario_resources: [
+      { id: 1, resource_id: 101, display_name: 'Residual Waste', current_quantity: 100, unit: 't', resource: { id: 101, name: 'Residual Waste', visual_type: 'mixed_waste' } },
+    ],
+  };
+
+  const api = { fetchScenario: async (id) => scenarioFixture };
+  const dl = new DataLoader({ apiCoordinator: api });
+  const loaded = await dl.loadScenario(2);
+  assert.equal(loaded.scenario_resources[0].resource.visual_type, 'mixed_waste');
+});
+
 test('ScenarioLoader.load emits scenario:loaded via eventBus', async () => {
   const scenarioFixture = { id: 2, name: 'Dandenong' };
   const api = { fetchScenario: async (id) => scenarioFixture };
