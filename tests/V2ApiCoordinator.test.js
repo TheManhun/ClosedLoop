@@ -34,3 +34,35 @@ test('ApiCoordinator throws useful error for HTTP failure', async () => {
   }
   assert.equal(threw, true);
 });
+
+test('ApiCoordinator requests /api/resources and returns JSON array', async () => {
+  let calledUrl = null;
+  global.fetch = async (url, opts) => {
+    calledUrl = url;
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ([ { id: 1, name: 'Water' } ]),
+    };
+  };
+
+  const api = new ApiCoordinator();
+  const res = await api.fetchResources();
+  assert.equal(calledUrl, '/api/resources');
+  assert.ok(res && Array.isArray(res));
+  assert.equal(res[0].id, 1);
+});
+
+test('ApiCoordinator.fetchResources throws useful error for HTTP failure', async () => {
+  global.fetch = async (url, opts) => ({ ok: false, status: 500, statusText: 'Server Error', text: async () => 'failure' });
+  const api = new ApiCoordinator();
+  let threw = false;
+  try {
+    await api.fetchResources();
+  } catch (e) {
+    threw = true;
+    assert.ok(e.message.includes('HTTP 500') || e.message.includes('500'));
+  }
+  assert.equal(threw, true);
+});

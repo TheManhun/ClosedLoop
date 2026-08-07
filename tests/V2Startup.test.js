@@ -16,6 +16,7 @@ test('App startup loads machines and UI shows real data', async () => {
   const fixture = { value: [ { id: 101, name: 'LoaderMachine' } ], Count: 1 };
   const api = new ApiCoordinator({});
   api.fetchMachines = async () => fixture;
+  api.fetchResources = async () => [ { id: 201, name: 'Water' } ];
   api.fetchScenario = async (id) => ({ id: id ?? 'default', name: 'Empty' });
 
   const dataLoader = new DataLoader({ apiCoordinator: api });
@@ -32,4 +33,6 @@ test('App startup loads machines and UI shows real data', async () => {
 
   assert.ok(root.innerText.includes('Machines: 1'));
   assert.ok(root.innerText.includes('First: LoaderMachine'));
+  assert.ok(root.innerText.includes('Resources: 1'));
+  assert.ok(root.innerText.includes('First: Water'));
 });

@@ -28,6 +28,28 @@ export default class DataLoader {
     return this._machines;
   }
 
+  /**
+   * Load resources from ApiCoordinator and keep them in-memory.
+   * The backend returns a top-level array of resources. If the response is not an array,
+   * this method throws a descriptive error.
+   */
+  async loadResources() {
+    const res = await this.api.fetchResources();
+    if (!Array.isArray(res)) {
+      throw new Error('DataLoader.loadResources: expected array response from API');
+    }
+    this._resources = res.slice();
+    return this._resources;
+  }
+
+  getResources() {
+    return (this._resources || []).slice();
+  }
+
+  getResourceById(id) {
+    return (this._resources || []).find((r) => Number(r.id) === Number(id)) || null;
+  }
+
   getMachines() {
     return (this._machines || []).slice();
   }

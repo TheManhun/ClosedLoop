@@ -44,6 +44,37 @@ export default class ApiCoordinator {
     }
   }
 
+  /**
+   * Fetch the resources list from the backend Laravel API.
+   * Returns the parsed JSON body (expected to be an array) or throws a descriptive error on failure.
+   */
+  async fetchResources() {
+    const url = '/api/resources';
+    let resp;
+    try {
+      resp = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+    } catch (e) {
+      const err = new Error(`ApiCoordinator.fetchResources network error: ${e.message}`);
+      err.cause = e;
+      throw err;
+    }
+    if (!resp || !resp.ok) {
+      let body = '';
+      try { body = await resp.text(); } catch (e) { body = '<unreadable body>'; }
+      const msg = `ApiCoordinator.fetchResources HTTP ${resp ? resp.status : 'ERR'}: ${resp ? resp.statusText : ''} ${body}`;
+      const err = new Error(msg);
+      err.status = resp ? resp.status : null;
+      throw err;
+    }
+    try {
+      return await resp.json();
+    } catch (e) {
+      const err = new Error(`ApiCoordinator.fetchResources invalid JSON: ${e.message}`);
+      err.cause = e;
+      throw err;
+    }
+  }
+
   destroy() {
     // Clean up network resources if any.
   }

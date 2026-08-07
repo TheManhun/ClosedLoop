@@ -47,6 +47,23 @@ export default class App {
       }
     }
 
+    // Load resources via DataLoader here. Non-fatal: capture error for UI.
+    if (this.dataLoader && typeof this.dataLoader.loadResources === 'function') {
+      try {
+        await this.dataLoader.loadResources();
+        this._resourceLoadError = null;
+      } catch (e) {
+        this._resourceLoadError = e && e.message ? e.message : String(e);
+      }
+      try {
+        if (this.uiManager && this.uiManager.statusProviders) {
+          this.uiManager.statusProviders.resourceLoadError = this._resourceLoadError;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     // Now initialise UI and game engine.
     this.uiManager?.initialise();
     this.gameEngine?.initialise();

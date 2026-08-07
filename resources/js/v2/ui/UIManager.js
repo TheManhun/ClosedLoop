@@ -43,6 +43,18 @@ export default class UIManager {
             lines.push('Machines: 0');
           }
         }
+        // Resources summary
+        const resourceErr = this.statusProviders.resourceLoadError || null;
+        if (resourceErr) {
+          lines.push(`Resources: load failed: ${resourceErr}`);
+        } else if (dl && typeof dl.getResources === 'function') {
+          const resources = dl.getResources();
+          if (Array.isArray(resources) && resources.length > 0) {
+            lines.push(`Resources: ${resources.length} — First: ${resources[0].name || '<unnamed>'}`);
+          } else {
+            lines.push('Resources: 0');
+          }
+        }
       } catch (e) {
         // ignore UI rendering errors
       }
