@@ -2,6 +2,7 @@ import GridRenderer from './GridRenderer.js';
 import CameraController from './CameraController.js';
 import GridHighlightRenderer from './GridHighlightRenderer.js';
 import InputController from './InputController.js';
+import StockpileRenderer from './StockpileRenderer.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -42,6 +43,8 @@ export default class Renderer {
       const gridRenderer = this._gridRenderer;
       const inputController = this._inputController;
 
+        const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+        this._stockpileRenderer = stockpileRenderer;
       // production: do not expose internals to window
 
       // Create a minimal blank scene that initialises the grid during its create() phase.
@@ -65,6 +68,10 @@ export default class Renderer {
 
           if (typeof gridRenderer !== 'undefined' && gridRenderer && typeof gridRenderer.initialise === 'function') {
             gridRenderer.initialise(this);
+          }
+          if (typeof stockpileRenderer !== 'undefined' && stockpileRenderer && typeof stockpileRenderer.initialise === 'function') {
+            // keep a reference on the renderer instance so destroy() can clean up
+            try { stockpileRenderer.initialise(this); } catch (e) { /* ignore */ }
           }
           if (typeof inputController !== 'undefined' && inputController && typeof inputController.initialise === 'function') {
             inputController.initialise(this);
@@ -120,6 +127,12 @@ export default class Renderer {
     if (this._inputController) {
       try { this._inputController.destroy(); } catch (e) { /* ignore */ }
       this._inputController = null;
+    }
+
+    // Destroy stockpile renderer if present
+    if (this._stockpileRenderer) {
+      try { this._stockpileRenderer.destroy(); } catch (e) { /* ignore */ }
+      this._stockpileRenderer = null;
     }
 
     // Destroy camera controller before destroying Phaser so it can unbind any references
