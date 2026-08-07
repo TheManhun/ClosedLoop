@@ -28,9 +28,8 @@ export async function run() {
   const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
   const uiManager = new UIManager({ eventBus, renderer, toolbox, statusProviders: { eventBus, api, dataLoader, technology, simulation, game: gameEngine, scenarioLoader } });
 
-  // Load a scenario (bootstrap only)
-  // Scenario load intentionally not required for Stage 0 verification.
-  const app = new App({ eventBus, renderer, gameEngine, uiManager, scenario: null });
+  // Create app and let App lifecycle own startup loading via ScenarioLoader.
+  const app = new App({ eventBus, renderer, gameEngine, uiManager, scenario: null, scenarioLoader, dataLoader });
   await app.start();
 }
 

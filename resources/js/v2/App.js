@@ -1,10 +1,13 @@
 export default class App {
-  constructor({ eventBus, renderer, gameEngine, uiManager, scenario } = {}) {
+  constructor({ eventBus, renderer, gameEngine, uiManager, scenario, scenarioLoader, dataLoader } = {}) {
     this.eventBus = eventBus;
     this.renderer = renderer;
     this.gameEngine = gameEngine;
     this.uiManager = uiManager;
     this.scenario = scenario;
+    this.scenarioLoader = scenarioLoader;
+    this.dataLoader = dataLoader;
+    this._machineLoadError = null;
     this.started = false;
   }
 
@@ -17,7 +20,36 @@ export default class App {
 
   async start() {
     if (this.started) return;
-    this.initialise();
+    // Initialise renderer first so the canvas exists for scene initialisation.
+    try {
+      this.renderer?.initialise();
+    } catch (e) {
+      // swallow so UI can show error
+      // eslint-disable-next-line no-console
+      console.error('Renderer initialise error', e);
+    }
+
+    // Load machines via DataLoader here. Non-fatal: capture error for UI.
+    if (this.dataLoader && typeof this.dataLoader.loadMachines === 'function') {
+      try {
+        await this.dataLoader.loadMachines();
+        this._machineLoadError = null;
+      } catch (e) {
+        this._machineLoadError = e && e.message ? e.message : String(e);
+      }
+      // Surface machine load error to UI via statusProviders on the uiManager if available.
+      try {
+        if (this.uiManager && this.uiManager.statusProviders) {
+          this.uiManager.statusProviders.machineLoadError = this._machineLoadError;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Now initialise UI and game engine.
+    this.uiManager?.initialise();
+    this.gameEngine?.initialise();
     // Game start remains responsibility of GameEngine.
     this.gameEngine?.start();
     this.started = true;

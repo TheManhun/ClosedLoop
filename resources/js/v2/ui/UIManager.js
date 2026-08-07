@@ -29,6 +29,24 @@ export default class UIManager {
       // Scenario loaded status
       lines.push('Scenario: Not loaded');
 
+      // If DataLoader has machines loaded, show a minimal summary for visual verification.
+      try {
+        const dl = this.statusProviders.dataLoader;
+        const loadErr = this.statusProviders.machineLoadError || null;
+        if (loadErr) {
+          lines.push(`Machines: load failed: ${loadErr}`);
+        } else if (dl && typeof dl.getMachines === 'function') {
+          const machines = dl.getMachines();
+          if (Array.isArray(machines) && machines.length > 0) {
+            lines.push(`Machines: ${machines.length} — First: ${machines[0].name || '<unnamed>'}`);
+          } else {
+            lines.push('Machines: 0');
+          }
+        }
+      } catch (e) {
+        // ignore UI rendering errors
+      }
+
       root.innerText = lines.join('\n');
     }
 
