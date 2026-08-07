@@ -1,5 +1,6 @@
 import GridRenderer from './GridRenderer.js';
 import CameraController from './CameraController.js';
+import GridHighlightRenderer from './GridHighlightRenderer.js';
 import InputController from './InputController.js';
 
 export default class Renderer {
@@ -20,10 +21,16 @@ export default class Renderer {
     const mountEl = document.getElementById(this.mountId);
     if (!mountEl) {
       throw new Error(`Renderer initialise failed: mount element #${this.mountId} not found`);
+      this._gridHighlight = new GridHighlightRenderer();
     }
+
+    // Ensure grid highlight renderer instance exists before Phaser scene captures it.
+    // Create it here so BlankScene.create() can call initialise on the instance.
+    this._gridHighlight = this._gridHighlight || new GridHighlightRenderer();
 
     // Dynamically import Phaser so Node tests won't evaluate it at load time.
     // eslint-disable-next-line no-undef
+    const gridHighlight = this._gridHighlight;
     return import('phaser').then((PhaserModule) => {
       const Phaser = PhaserModule.default || PhaserModule;
 
@@ -49,6 +56,9 @@ export default class Renderer {
             if (typeof camera !== 'undefined' && camera && typeof camera.initialise === 'function') {
               camera.initialise(this);
             }
+          if (typeof gridHighlight !== 'undefined' && gridHighlight && typeof gridHighlight.initialise === 'function') {
+            gridHighlight.initialise(this, inputController);
+          }
           } catch (e) {
             // ignore
           }
@@ -94,6 +104,12 @@ export default class Renderer {
   }
 
   destroy() {
+    // Destroy grid highlight renderer first
+    if (this._gridHighlight) {
+      try { this._gridHighlight.destroy(); } catch (e) { /* ignore */ }
+      this._gridHighlight = null;
+    }
+
     // Destroy grid renderer (if any) before destroying the Phaser game
     if (this._gridRenderer) {
       try { this._gridRenderer.destroy(); } catch (e) { /* ignore */ }

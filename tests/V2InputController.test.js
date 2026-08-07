@@ -45,6 +45,9 @@ test('initialise registers pointermove and updates screen/world coordinates', ()
 
   // ensure on registered
   assert.ok(calls.find(c => c[0] === 'on' && c[1] === 'pointermove'));
+  // ensure over/out registered
+  assert.ok(calls.find(c => c[0] === 'on' && c[1] === 'pointerover'));
+  assert.ok(calls.find(c => c[0] === 'on' && c[1] === 'pointerout'));
 
   // emit pointermove
   fakeInput.emit('pointermove', { x: 100, y: 50 });
@@ -67,6 +70,8 @@ test('initialise registers pointermove and updates screen/world coordinates', ()
   // destroy removes handler
   ic.destroy();
   assert.ok(calls.find(c => c[0] === 'off' && c[1] === 'pointermove'));
+  assert.ok(calls.find(c => c[0] === 'off' && c[1] === 'pointerover'));
+  assert.ok(calls.find(c => c[0] === 'off' && c[1] === 'pointerout'));
 
   // repeated destroy safe
   assert.doesNotThrow(() => ic.destroy());
