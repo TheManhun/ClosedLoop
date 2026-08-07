@@ -1,5 +1,6 @@
 import GridRenderer from './GridRenderer.js';
 import CameraController from './CameraController.js';
+import InputController from './InputController.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -26,11 +27,13 @@ export default class Renderer {
     return import('phaser').then((PhaserModule) => {
       const Phaser = PhaserModule.default || PhaserModule;
 
-      // create CameraController and GridRenderer before Phaser game so the scene can initialise them in create()
+      // create CameraController, GridRenderer and InputController before Phaser game so the scene can initialise them in create()
       this._camera = new CameraController();
       this._gridRenderer = new GridRenderer();
+      this._inputController = new InputController();
       const camera = this._camera;
       const gridRenderer = this._gridRenderer;
+      const inputController = this._inputController;
 
       // production: do not expose internals to window
 
@@ -52,6 +55,9 @@ export default class Renderer {
 
           if (typeof gridRenderer !== 'undefined' && gridRenderer && typeof gridRenderer.initialise === 'function') {
             gridRenderer.initialise(this);
+          }
+          if (typeof inputController !== 'undefined' && inputController && typeof inputController.initialise === 'function') {
+            inputController.initialise(this);
           }
         }
         update() {}
@@ -92,6 +98,12 @@ export default class Renderer {
     if (this._gridRenderer) {
       try { this._gridRenderer.destroy(); } catch (e) { /* ignore */ }
       this._gridRenderer = null;
+    }
+
+    // Destroy input controller before destroying Phaser so it can unbind listeners
+    if (this._inputController) {
+      try { this._inputController.destroy(); } catch (e) { /* ignore */ }
+      this._inputController = null;
     }
 
     // Destroy camera controller before destroying Phaser so it can unbind any references
