@@ -27,7 +27,9 @@ export default class InputController {
         // Use the current active camera to convert screen -> world
         const cam = (this._scene.cameras && this._scene.cameras.main) ? this._scene.cameras.main : null;
         if (cam && typeof cam.getWorldPoint === 'function') {
-          const w = cam.getWorldPoint(sx, sy);
+          const c = (this._scene && this._scene.game && this._scene.game.canvas) ? this._scene.game.canvas : null;
+          const rect = (c && c.getBoundingClientRect) ? c.getBoundingClientRect() : null;
+          const w = rect ? cam.getWorldPoint(sx - rect.left, sy - rect.top) : cam.getWorldPoint(sx, sy);
           // Ensure shape
           this._lastWorld = { x: w.x, y: w.y };
             try {
