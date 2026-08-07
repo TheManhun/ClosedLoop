@@ -1,6 +1,6 @@
 **Purpose:** Catalogue all EventBus events that can be verified in the repository and describe EventBus behaviour and lifecycle.
 **Version:** 2.0
-**Last-reviewed:** 2026-08-06
+**Last-reviewed:** 2026-08-07
 
 EventBus implementation (verified)
 - Location: `resources/js/v2/events/EventBus.js`
@@ -65,6 +65,8 @@ Not implemented / roadmap events (proposed by roadmap; not present in code)
   - `simulation:tick` / `simulation:updated` — periodic simulation results.
   - `toolbox:updated` — toolbox contents changed.
   - `hint:recommended` — hint engine suggestions.
+
+  Note: hover highlighting of grid cells is implemented inside the renderer (`GridHighlightRenderer`) and is not emitted as an EventBus event in Stage 1. Selection and selection-related events (e.g., `selection:changed`) remain unimplemented and are planned for Stage 4; do not document payload contracts for these events until they are implemented.
 
 Direct module communication (bypassing EventBus) (verified)
 - `resources/js/v2/main.js` wires modules together by passing direct object references into constructors (e.g., `UIManager({ renderer, toolbox, statusProviders: { ... } })`). This is deliberate but means some interactions are direct references rather than strictly event-driven.

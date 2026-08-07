@@ -1,6 +1,6 @@
 **Purpose:** Define clear contracts for V2 modules to prevent architectural drift, enable independent implementation and provide a checklist for reviewers.
 **Version:** 2.0
-**Last-reviewed:** 2026-08-06
+**Last-reviewed:** 2026-08-07
 
 Guidelines
 - Each contract below describes a module's responsibilities. Modules must adhere to "Must NOT own" constraints to avoid tight coupling. Events are the preferred communication mechanism for behavioural interactions between independent modules unless a module is explicitly documented as the owner of a resource.
@@ -76,14 +76,19 @@ GameEngine
 - Future Notes: Prefer emitting events rather than calling deep methods on UI or Renderer.
 
 Renderer
-- Purpose: Responsible for visual rendering, camera, grid, and viewport; isolates rendering technology (Phaser or otherwise) behind an adapter API.
-- Owns: Rendering layer and any renderer-specific resources (textures, scenes).
+- Purpose: Responsible for visual rendering, camera, grid, and viewport; isolates rendering technology (Phaser) behind a minimal adapter API.
+- Owns: Rendering layer, Phaser game instance, scenes, and renderer-owned subsystems.
 - Must NOT own: Game logic, simulation state mutations, API calls.
-- Dependencies: `EventBus` (subscribe to render-ready events), optionally a Phaser instance or canvas context.
+- Dependencies: `EventBus` (subscribe to render-ready events), Phaser instance or canvas context.
 - Produces Events: `render:frame` (optional diagnostic), `renderer:ready`.
 - Consumes Events: `simulation:updated`, `game:started`, `game:stopped`, `viewport:resize`.
 - Public Responsibilities: provide `initialise()`, `render(frame)` and `destroy()`; expose only the minimal interface needed by UI and GameEngine.
-- Future Notes: Implement an adapter layer so the rendering backend can change without affecting GameEngine or UI.
+- Renderer-owned subsystems (Stage 1 implementations):
+	- `InputController`: subscribes to Phaser pointer events, translates pointer screen coordinates to world coordinates using the active camera, and exposes `getPointerWorld()` and `isPointerInside()`.
+	- `CameraController`: implements pan (middle-button drag) and wheel zoom centred at the pointer; updates camera scroll and zoom.
+	- `GridRenderer`: draws a camera-aligned infinite grid based on the camera.worldView and avoids unnecessary redraws.
+	- `GridHighlightRenderer`: draws a translucent 64×64 highlight on the hovered grid cell; listens to `scene.update` and hides when pointer leaves the canvas.
+- Future Notes: Keep these subsystems small, lifecycle-managed by `Renderer`, and accessible only through the renderer's public interface where possible.
 
 UIManager
 - Purpose: Presentational UI layer; DOM interaction and widgets. Renders panels, toolbox UI and status; subscribes to EventBus for data updates.

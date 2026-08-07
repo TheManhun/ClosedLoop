@@ -1,6 +1,6 @@
-**Purpose:** Document the verified, current implementation of Closed Loop V2 (Stage 0 only).
+**Purpose:** Document the verified, current implementation of Closed Loop V2 (Stage 1).
 **Version:** 2.0
-**Last-reviewed:** 2026-08-06
+**Last-reviewed:** 2026-08-07
 
 Summary
 - This document records behaviour and structure that can be verified from the repository and supplied Supabase schema docs. Items labelled "Unconfirmed" indicate assertions that could not be fully verified from code or docs.
@@ -14,18 +14,16 @@ Platform and Dependencies (verified)
 
 Frontend structure (verified)
 - Legacy simulator: `resources/js/simulator.js` and related subfolders under `resources/js/simulator/` (legacy V1 implementation).
-- V2 frontend: `resources/js/v2/` with the following visible modules:
-  - `events/EventBus.js`
-  - `api/ApiCoordinator.js`
-  - `services/DataLoader.js`
-  - `technology/TechnologyEngine.js`
-  - `simulation/SimulationEngine.js`
-  - `engine/GameEngine.js`
-  - `renderer/Renderer.js`
-  - `toolbox/ToolboxController.js`
-  - `scenarios/ScenarioLoader.js`
-  - `ui/UIManager.js`
-  - `App.js`, `main.js`
+- V2 frontend: `resources/js/v2/` with the following modules and Stage 1 implementations:
+  - `events/EventBus.js` (implemented)
+  - `renderer/Renderer.js` (Phaser-based renderer initialisation and lifecycle)
+  - `renderer/CameraController.js` (pan & zoom handlers)
+  - `renderer/GridRenderer.js` (infinite, camera-aligned grid)
+  - `renderer/InputController.js` (pointer screen→world conversion and pointer-in/canvas detection)
+  - `renderer/GridHighlightRenderer.js` (hovered-cell highlight)
+  - `engine/GameEngine.js` (lifecycle orchestration)
+  - `ui/UIManager.js` (status UI for Stage 1)
+  - `api/ApiCoordinator.js`, `services/DataLoader.js`, `technology/TechnologyEngine.js`, `simulation/SimulationEngine.js`, `toolbox/ToolboxController.js`, `scenarios/ScenarioLoader.js`, `App.js`, `main.js` (module shells present; many are intentionally minimal for later stages)
 
 Routes and browser entry points (verified)
 - V1 route: `GET /simulator` → `PagesController::simulator()` → view `resources/views/simulator.blade.php` (legacy frontend entries via `@vite(['resources/js/simulator.js','resources/js/factory-editor.js'])`).
@@ -50,17 +48,14 @@ V2 bootstrap sequence (verified from `resources/js/v2/main.js`)
 10. Construct `App` with `{ eventBus, gameEngine, uiManager, scenario: null }` and call `app.start()`.
 
 Module responsibilities (what is implemented vs shell)
-- `EventBus` (resources/js/v2/events/EventBus.js): implemented. Provides `on`, `off`, `emit`, `initialise`, `destroy` (listeners Map). Behaviour verified in tests.
-- `ApiCoordinator` (api/ApiCoordinator.js): shell. Exposes `fetchScenario(id)` that currently returns a minimal resolved promise ({ id, name }). Marked intentionally unimplemented for real API calls.
-- `DataLoader` (services/DataLoader.js): small wrapper around `ApiCoordinator`. Throws if not constructed with `ApiCoordinator`. Shell: `loadScenario(id)` proxies to `api.fetchScenario`.
-- `TechnologyEngine` (technology/TechnologyEngine.js): shell; holds a Map for technologies; no loading logic implemented.
-- `SimulationEngine` (simulation/SimulationEngine.js): minimal lifecycle (initialise, start, stop, destroy). No simulation calculations present.
-- `GameEngine` (engine/GameEngine.js): depends on `SimulationEngine` (constructor enforces presence). Calls `simulation.start()` on `start()` and emits `game:started`/`game:stopped` via EventBus.
-- `Renderer` (renderer/Renderer.js): shell with `initialise()` and `render(frame)` methods; `render` is a no-op until implemented.
-- `ToolboxController` (toolbox/ToolboxController.js): shell; registers tools Map only.
-- `ScenarioLoader` (scenarios/ScenarioLoader.js): uses `DataLoader.loadScenario(id)` and emits `scenario:loaded` with the scenario object.
-- `UIManager` (ui/UIManager.js): minimal Stage 0 UI; when `initialise()` runs in a browser it writes a textual, monospace status block into `#closed-loop-v2-root`. Shows presence/absence of key statusProviders.
-- `App` (App.js): coordinates `uiManager.initialise()` then `gameEngine.start()`; destroy reverses lifecycle.
+- `EventBus` (resources/js/v2/events/EventBus.js): implemented. Provides `on`, `off`, `emit`, `initialise`, `destroy`. Behaviour verified in tests.
+- Renderer-related modules (implemented for Stage 1):
+  - `renderer/Renderer.js`: implements Phaser import and game creation; configures Phaser scale to `Phaser.Scale.RESIZE` and mounts the BlankScene that initialises renderer subsystems.
+  - `renderer/CameraController.js`: implements pan (middle-button drag), wheel zoom (centered on pointer), and updates camera scroll/zoom.
+  - `renderer/GridRenderer.js`: draws an infinite grid aligned to `camera.worldView` and avoids unnecessary redraws.
+  - `renderer/InputController.js`: subscribes to Phaser pointer events, converts screen→world via the active camera, and exposes `getPointerWorld()` and `isPointerInside()` (includes a canvas-bounds fallback).
+  - `renderer/GridHighlightRenderer.js`: listens to scene `update` and draws a single translucent 64×64 highlight for the hovered cell; hides when the pointer leaves the canvas.
+- Other modules (shells or minimal implementations): `ApiCoordinator`, `DataLoader`, `TechnologyEngine`, `SimulationEngine`, `ToolboxController`, `ScenarioLoader` (present but intentionally minimal; real API integration and simulation logic are Stage 2+ work).
 
 Constructor dependencies and wiring (verified)
 - `DataLoader` requires `ApiCoordinator` (throws if missing).
@@ -117,12 +112,10 @@ Unconfirmed or Requires Verification
 - Supabase schema ownership and precise FK constraints: `docs/supabase.md` lists columns; foreign key constraints are inferred in `SupabaseService` usage (e.g., `machine_resources` joined to `resources`) but true DB FK constraints were not contained in the exported table column report — treat relationships as verified where used by `SupabaseService`, otherwise mark unconfirmed.
 - Event payload shapes beyond `scenario:loaded` are not defined; any code relying on specific payload properties should be verified when implementation progresses.
 
-Stage 0 notes and readiness
-- Readiness score (updated): 91 / 100
-- Recommendation: Accept Stage 0 with minor documentation conditions before Stage 1.
-- Required documentation conditions before Stage 1:
-  - Mark `ApiCoordinator` and `DataLoader` as Stage 2 implementation items and add an expected API contract summary (see below).
-  - Document event payload contracts as TODO in `docs/EVENTS.md` and add guidance on listener lifecycle responsibility.
+Stage 1 notes and readiness
+- Readiness: Stage 1 renderer, camera, grid, pointer handling and hover highlight are implemented and verified by unit tests and browser checks.
+- Remaining Stage 2+ items: `ApiCoordinator` and `DataLoader` remain to be implemented to fetch and normalise backend data (Stage 2).
+- Documentation action: update `EVENTS.md` with confirmed events and note that selection events are not yet implemented (Selection is Stage 4).
 
 ApiCoordinator expected Stage 2 contract (summary)
 - Purpose: sole client for frontend HTTP requests that require domain data. All V2 modules must obtain remote data exclusively via `ApiCoordinator` (no direct fetch()).
