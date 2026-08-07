@@ -555,3 +555,31 @@ Consequences
 - V2 reads protected scenario data through Laravel endpoints (e.g., `/api/scenarios/{id}`).
 - Future clients (for example Unity) should also call the Laravel API rather than embedding the service-role key.
 - Supabase remains the single source of truth; Laravel is the trusted proxy for protected reads.
+
+=========================================================
+CL-022
+=========================================================
+
+Status
+
+🟢 Accepted
+
+Decision
+
+Dandenong South is the first implemented V2 scenario
+
+Reason
+
+- it provides a real Melbourne South-East population baseline
+- it already contains Supabase-backed resource inputs
+- it provides a substantial regional scenario for testing the V2 architecture
+- Stage 2 has already established and verified its API/data pipeline
+
+Consequences
+
+- CL-003 is superseded only regarding which scenario is implemented first
+- CL-015 is superseded only regarding deferral of regional hub scenarios
+- Melbourne Legacy Landfill remains a valid future scenario
+- Dandenong South becomes the Stage 3 reference scenario
+- Supabase remains the source of truth
+- scenario-specific values must not be hard-coded into runtime modules

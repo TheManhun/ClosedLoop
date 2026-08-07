@@ -242,7 +242,7 @@ SCENARIO SYSTEM
 
 Goal
 
-Load Melbourne Legacy Landfill.
+Load Dandenong South Closed Loop Hub.
 
 Tasks
 
