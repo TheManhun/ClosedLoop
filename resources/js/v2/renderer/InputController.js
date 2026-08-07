@@ -28,8 +28,12 @@ export default class InputController {
         const cam = (this._scene.cameras && this._scene.cameras.main) ? this._scene.cameras.main : null;
         if (cam && typeof cam.getWorldPoint === 'function') {
           const c = (this._scene && this._scene.game && this._scene.game.canvas) ? this._scene.game.canvas : null;
-          const rect = (c && c.getBoundingClientRect) ? c.getBoundingClientRect() : null;
-          const w = rect ? cam.getWorldPoint(sx - rect.left, sy - rect.top) : cam.getWorldPoint(sx, sy);
+          // Phaser pointer.x/pointer.y are canvas-local coordinates. Do NOT
+          // subtract the DOM bounding rect offsets before converting to world
+          // coordinates — pass canvas-local coords directly to getWorldPoint.
+          const w = cam.getWorldPoint(sx, sy);
+          // (No debug logging here) Phaser pointer.x/y are canvas-local; getWorldPoint
+          // receives canvas-local coordinates directly.
           // Ensure shape
           this._lastWorld = { x: w.x, y: w.y };
             try {
@@ -38,7 +42,11 @@ export default class InputController {
                 const c = (this._scene && this._scene.game && this._scene.game.canvas) ? this._scene.game.canvas : null;
                 if (c && c.getBoundingClientRect) {
                   const r = c.getBoundingClientRect();
-                  this._inside = sx >= r.left && sx <= r.right && sy >= r.top && sy <= r.bottom;
+                  // Prefer client coordinates when available (page space). Otherwise
+                  // convert canvas-local pointer.x/y (sx/sy) into page coords by adding rect offsets.
+                  const pageX = (typeof pointer.clientX === 'number') ? pointer.clientX : (r.left + sx);
+                  const pageY = (typeof pointer.clientY === 'number') ? pointer.clientY : (r.top + sy);
+                  this._inside = pageX >= r.left && pageX <= r.right && pageY >= r.top && pageY <= r.bottom;
                 }
               } catch (e) {}
             } catch (e) {}
