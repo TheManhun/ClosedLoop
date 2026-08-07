@@ -120,14 +120,27 @@ Tasks
 
 □ Create main bootstrap
 
-□ Create Event Manager
 
-□ Create empty API Coordinator
+Tasks
 
-□ Create Game Engine shell
+- [x] API Client
+- [x] Machine loading
+- [x] Resource loading
+- [x] Scenario loading
+- [x] Error handling
+- [x] Cache
 
-□ Create UI shell
+Expected Result
 
+All data loads from Supabase through the Laravel API proxy. Nothing duplicated.
+
+Status
+
+✔ Stage 2 complete — API Coordinator, DataLoader and Scenario pipeline implemented and verified.
+
+Git Tag
+
+v2-stage-2
 □ Create Simulation shell
 
 Expected Result

@@ -119,3 +119,28 @@ ScenarioLoader
 - Consumes Events: none by default.
 - Public Responsibilities: perform `load(id)` and emit `scenario:loaded` with the normalised scenario object returned by `DataLoader`.
 - Future Notes: Scenario formats and payload schemas must be defined at Stage 2 and documented in EVENTS.md.
+
+Stage 2 Implemented Contracts (verified)
+
+ApiCoordinator
+- `fetchMachines()` — GET `/api/machines`, returns parsed JSON or throws descriptive error.
+- `fetchResources()` — GET `/api/resources`, returns parsed JSON array or throws descriptive error.
+- `fetchScenario(id)` — GET `/api/scenarios/{id}`, returns parsed JSON object or throws descriptive error.
+
+DataLoader
+- `loadMachines()` — calls `ApiCoordinator.fetchMachines()` and stores in-memory `_machines`.
+- `getMachines()` — returns a shallow copy of `_machines`.
+- `getMachineById(id)` — returns a machine by id from `_machines`.
+- `loadResources()` — calls `ApiCoordinator.fetchResources()` and stores `_resources` in-memory.
+- `getResources()` — returns a shallow copy of `_resources`.
+- `getResourceById(id)` — returns a resource by id from `_resources`.
+- `loadScenario(id)` — calls `ApiCoordinator.fetchScenario(id)`, normalises scenario, links embedded resources, stores in-memory `_scenarios`.
+- `getScenarioById(id)` — returns a cached scenario by id.
+
+Cache
+- in-memory only (DataLoader caches `_machines`, `_resources`, `_scenarios`).
+- no TTL, no invalidation, no browser persistent cache yet.
+
+ScenarioLoader
+- `load(id)` — delegates to `DataLoader.loadScenario(id)` and emits `scenario:loaded` with the returned object.
+

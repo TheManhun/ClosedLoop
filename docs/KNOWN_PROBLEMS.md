@@ -64,3 +64,22 @@ Future risks
 Unconfirmed risks
 - UR-001: `phaser` is a dependency and is used by the V2 renderer; confirm Phaser feature usage as Stage 1 progresses.
 - UR-002: Supabase schema ownership for certain composite fields (e.g., quantity bases, units) is not fully documented in `docs/supabase.md`. API normalisation expectations may need clarification.
+
+Confirmed non-blocking notes
+
+- CLV2-KP-006
+  - Title: DataLoader cache is memory-only and resets on reload by design
+  - Status: confirmed
+  - Severity: low
+  - Affected files/modules: `resources/js/v2/services/DataLoader.js`
+  - Observed behaviour: canonical domain caches are stored only in-memory; a full reload clears cached machines/resources/scenarios.
+  - Evidence: `DataLoader` stores `_machines`, `_resources`, and `_scenarios` in memory with no persistence or TTL.
+  - Workaround: none required for Stage 2; persistence and invalidation are Stage 3+ decisions.
+
+- CLV2-KP-007
+  - Title: Vite reports large-chunk warning during production build
+  - Status: confirmed
+  - Severity: low
+  - Observed behaviour: `npm run build` prints warnings that some chunks are larger than 500 kB after minification.
+  - Evidence: build logs from running `npm run build`.
+  - Workaround: informational — consider code-splitting or adjusting chunk size limits if desired.

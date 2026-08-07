@@ -514,7 +514,6 @@ Reason
 
 Closed Loop is fundamentally about understanding how resources flow between technologies rather than simply building factories.
 
----
 
 Future Decisions
 
@@ -533,3 +532,26 @@ and reference the new decision number.
 This document becomes the design history of the project.
 
 END OF DOCUMENT
+
+=========================================================
+CL-021
+=========================================================
+
+Status
+
+🟢 Accepted
+
+Decision
+
+Protected Supabase scenario data is accessed by Laravel using the service-role credential server-side only.
+
+Reason
+
+Scenario and `scenario_resources` data are protected by Row Level Security (RLS) in Supabase. The Laravel API acts as the trusted server-side boundary that can hold the Supabase service-role key securely.
+
+Consequences
+
+- Browser clients do not use the Supabase service-role key.
+- V2 reads protected scenario data through Laravel endpoints (e.g., `/api/scenarios/{id}`).
+- Future clients (for example Unity) should also call the Laravel API rather than embedding the service-role key.
+- Supabase remains the single source of truth; Laravel is the trusted proxy for protected reads.

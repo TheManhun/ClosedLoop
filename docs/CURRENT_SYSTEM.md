@@ -117,6 +117,36 @@ Stage 1 notes and readiness
 - Remaining Stage 2+ items: `ApiCoordinator` and `DataLoader` remain to be implemented to fetch and normalise backend data (Stage 2).
 - Documentation action: update `EVENTS.md` with confirmed events and note that selection events are not yet implemented (Selection is Stage 4).
 
+Stage status
+
+- Stage 0: complete
+- Stage 1: complete
+- Stage 2: complete
+
+Current data path
+
+Browser V2 → ApiCoordinator → Laravel API → Supabase
+
+Backend and data notes
+
+- Machines load from Supabase through Laravel (`/api/machines`).
+- Resources load from Supabase through Laravel (`/api/resources`).
+- Scenarios load from Supabase through Laravel (`/api/scenarios/{id}`).
+- The Dandenong South scenario currently loads at startup (default scenario id 2).
+- Canonical `DataLoader` caches machines, resources and scenarios in memory (in-memory cache only).
+- The `/api/scenarios/{id}` endpoint returns normalized scenario objects and `scenario_resources` ordered by numeric `sort_order`.
+- Protected scenario data is read server-side using the Supabase service-role key; this credential is SERVER-SIDE ONLY and is never exposed to browser clients.
+
+Current Dandenong scenario proof
+
+- stable_key: dandenong-south
+- population: 860060
+- scenario_resources: 6 inputs
+
+Notes
+
+- Do not assume Stage 3 rendering or stockpile loading has been implemented; those remain for Stage 3 and later.
+
 ApiCoordinator expected Stage 2 contract (summary)
 - Purpose: sole client for frontend HTTP requests that require domain data. All V2 modules must obtain remote data exclusively via `ApiCoordinator` (no direct fetch()).
 - API endpoints expected to be used (examples):

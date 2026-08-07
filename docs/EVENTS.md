@@ -29,7 +29,7 @@ Event catalogue (implemented & verified)
   - Exact name: `scenario:loaded`
   - Producer: `resources/js/v2/scenarios/ScenarioLoader.js` (method `load(id)` emits this after `DataLoader.loadScenario`).
   - Consumer(s): none found in `resources/js/v2` (no `on('scenario:loaded', ...)` usages discovered). Consumers may be implemented later.
-  - Payload shape: the object returned by `DataLoader.loadScenario(id)` / `ApiCoordinator.fetchScenario(id)`. Current `ApiCoordinator.fetchScenario` returns `{ id, name }`. Mark any additional payload properties as "Unconfirmed" until ApiCoordinator/DataLoader are implemented to return full scenario shapes.
+  - Payload shape: the object returned by `DataLoader.loadScenario(id)` / `ApiCoordinator.fetchScenario(id)`. For Stage 2 the payload is a full scenario object with properties including at least: `id`, `stable_key`, `name`, `population`, `reference_year`, `data_status`, and `scenario_resources` (array). `scenario_resources` entries include `id`, `scenario_id`, `resource_id`, `instance_key`, `display_name`, `initial_quantity`, `current_quantity`, `unit`, `sort_order`, `fixed`, `selectable`, `notes`, and an embedded `resource` object where available.
   - When it fires: when `ScenarioLoader.load(id)` completes.
   - Fires once or repeatedly: fires whenever `load(id)` completes — can fire repeatedly for multiple loads.
   - Roadmap stage: Stage 3 (Scenario System) — currently used in Stage 0 as part of boot scaffolding.
