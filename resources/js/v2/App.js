@@ -67,6 +67,28 @@ export default class App {
     // Now initialise UI and game engine.
     this.uiManager?.initialise();
     this.gameEngine?.initialise();
+    // Load initial scenario (Stage 2): non-fatal, default to scenario id 2
+    try {
+      if (this.scenarioLoader && typeof this.scenarioLoader.load === 'function') {
+        await this.scenarioLoader.load(2);
+        this._scenarioLoadError = null;
+      }
+    } catch (e) {
+      this._scenarioLoadError = e && e.message ? e.message : String(e);
+    }
+    try {
+      if (this.uiManager && this.uiManager.statusProviders) {
+        this.uiManager.statusProviders.scenarioLoadError = this._scenarioLoadError;
+      }
+    } catch (e) {
+      // ignore
+    }
+    // Reinitialise UI to reflect scenario load status
+    try {
+      this.uiManager?.initialise();
+    } catch (e) {
+      // ignore
+    }
     // Game start remains responsibility of GameEngine.
     this.gameEngine?.start();
     this.started = true;

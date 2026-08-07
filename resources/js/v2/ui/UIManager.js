@@ -55,6 +55,31 @@ export default class UIManager {
             lines.push('Resources: 0');
           }
         }
+        // Scenario summary
+        try {
+          const scenarioErr = this.statusProviders.scenarioLoadError || null;
+          if (scenarioErr) {
+            lines.push(`Scenario load: failed: ${scenarioErr}`);
+          } else if (dl && typeof dl.getScenarioById === 'function') {
+            const scenario = dl.getScenarioById(2);
+            if (scenario) {
+              lines.push(`Scenario: ${scenario.name || '<unnamed>'}`);
+              if (scenario.population) lines.push(`Population: ${Number(scenario.population).toLocaleString()}`);
+              if (Array.isArray(scenario.scenario_resources)) {
+                lines.push(`Scenario resources: ${scenario.scenario_resources.length}`);
+                // list resource names and quantities (first 6)
+                const items = scenario.scenario_resources.slice(0, 6).map((sr) => {
+                  const name = (sr.resource && sr.resource.name) || (sr.resource && sr.resource.name) || sr.display_name || '<unknown>';
+                  const qty = sr.current_quantity ?? sr.initial_quantity ?? '';
+                  return qty ? `${name}: ${qty}` : name;
+                });
+                if (items.length > 0) lines.push(...items);
+              }
+            }
+          }
+        } catch (e) {
+          // ignore UI rendering errors
+        }
       } catch (e) {
         // ignore UI rendering errors
       }

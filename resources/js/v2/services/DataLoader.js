@@ -9,7 +9,34 @@ export default class DataLoader {
   }
 
   async loadScenario(id) {
-    return this.api.fetchScenario(id);
+    const res = await this.api.fetchScenario(id);
+    // Expect a single scenario object. Store canonical scenarios in a map.
+    this._scenarios = this._scenarios || {};
+    // Defensive: if API returned an array, take first
+    const scenario = Array.isArray(res) ? (res[0] || null) : res;
+    if (!scenario) throw new Error('DataLoader.loadScenario: unexpected empty response');
+
+    // Link scenario_resources to canonical resources where possible
+    if (Array.isArray(scenario.scenario_resources)) {
+      scenario.scenario_resources = scenario.scenario_resources.map((sr) => {
+        const copy = Object.assign({}, sr);
+        // resource may be embedded under `resource`
+        const embedded = sr.resource || sr.resources || null;
+        if (embedded) copy.resource = embedded;
+        // Attempt to resolve canonical resource by id
+        const canonical = this.getResourceById(sr.resource_id);
+        if (canonical) copy.resource_canonical = canonical;
+        return copy;
+      });
+    }
+
+    this._scenarios[Number(scenario.id)] = scenario;
+    return scenario;
+  }
+
+  getScenarioById(id) {
+    if (!this._scenarios) return null;
+    return this._scenarios[Number(id)] || null;
   }
 
   /**

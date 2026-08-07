@@ -9,15 +9,17 @@ Route::get('/about', [PagesController::class, 'about'])->name('about');
 
 // Closed Loop V2 Stage 0 verification route
 Route::get('/simulator-v2', function () {
-	return view('simulator-v2');
+    return view('simulator-v2');
 })->name('simulator-v2');
 
 // API endpoints (mounted under /api/* because this app configures only web/console routes)
 use App\Http\Controllers\MachineController;
 use App\Http\Controllers\ResourcesController;
+use App\Http\Controllers\ScenarioController;
 
 Route::prefix('api')->group(function () {
-	Route::get('/machines', [MachineController::class, 'index']);
-	Route::get('/machines/{id}', [MachineController::class, 'show']);
-	Route::get('/resources', [ResourcesController::class, 'index']);
+    Route::get('/machines', [MachineController::class, 'index']);
+    Route::get('/machines/{id}', [MachineController::class, 'show']);
+    Route::get('/resources', [ResourcesController::class, 'index']);
+    Route::get('/scenarios/{id}', [ScenarioController::class, 'show']);
 });
