@@ -12,6 +12,30 @@ export default class DataLoader {
     return this.api.fetchScenario(id);
   }
 
+  /**
+   * Load machines from ApiCoordinator and keep them in-memory.
+   * Returns the stored machines array.
+   */
+  async loadMachines() {
+    const res = await this.api.fetchMachines();
+    // Preserve API shape where practical. Accept either an array or an
+    // envelope with `value` (existing backend returns { value: [...], Count }).
+    let list = [];
+    if (Array.isArray(res)) list = res;
+    else if (res && Array.isArray(res.value)) list = res.value;
+    else throw new Error('DataLoader.loadMachines: unexpected response shape');
+    this._machines = list;
+    return this._machines;
+  }
+
+  getMachines() {
+    return (this._machines || []).slice();
+  }
+
+  getMachineById(id) {
+    return (this._machines || []).find((m) => Number(m.id) === Number(id)) || null;
+  }
+
   destroy() {
     // Release any cached data.
   }
