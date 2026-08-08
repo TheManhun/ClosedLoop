@@ -7,6 +7,19 @@ function makeMockScene() {
   const created = [];
   const scene = {
     add: {
+      zone: (x, y, w, h) => {
+        const z = {
+          _destroyed: false,
+          _interactiveAssigned: false,
+          _handlers: {},
+          setInteractive: function() { this._interactiveAssigned = true; },
+          on: function(ev, h) { this._handlers[ev] = h; },
+          off: function(ev) { delete this._handlers[ev]; },
+          destroy: function() { this._destroyed = true; }
+        };
+        created.push(z);
+        return z;
+      },
       graphics: () => {
         const g = {
           _destroyed: false,
@@ -41,6 +54,33 @@ function makeMockScene() {
   };
   return { scene, created };
 }
+
+test('Creates a Zone per stockpile and attaches interactive handlers to the Zone', async () => {
+  const { scene, created } = makeMockScene();
+  const eb = makeEventBus();
+  const r = new StockpileRenderer({ eventBus: eb, cellSize: 64 });
+  r.initialise(scene);
+
+  const scenario = { scenario_resources: [ { id: 1, display_name: 'Z', current_quantity: 5, unit: 't' } ] };
+  eb.emit('scenario:loaded', scenario);
+
+  assert.equal(r._stockpiles.length, 1);
+  const entry = r._stockpiles[0];
+  assert.ok(entry.hitZone, 'hitZone should be created');
+  assert.ok(entry.hitZone._interactiveAssigned === true, 'Zone should have setInteractive called');
+  assert.ok(entry.hitZone._handlers && typeof entry.hitZone._handlers.pointerover === 'function', 'pointerover handler should be attached to zone');
+  assert.ok(entry.hitZone._handlers && typeof entry.hitZone._handlers.pointerout === 'function', 'pointerout handler should be attached to zone');
+
+  // reload scenario should destroy previous zone
+  const prevZone = entry.hitZone;
+  const newScenario = { scenario_resources: [ { id: 2, display_name: 'Y', current_quantity: 6, unit: 't' } ] };
+  eb.emit('scenario:loaded', newScenario);
+  // previous zone should be destroyed
+  assert.ok(prevZone._destroyed === true, 'previous zone should be destroyed on reload');
+  // also ensure destroy() cleans up
+  r.destroy();
+  assert.equal(r._stockpiles.length, 0);
+});
 
 function makeEventBus() {
   const handlers = {};

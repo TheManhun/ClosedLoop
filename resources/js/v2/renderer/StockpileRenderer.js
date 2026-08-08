@@ -244,21 +244,50 @@ export default class StockpileRenderer {
       };
     };
 
-    if (go && typeof go.setInteractive === 'function' && this._scene.input) {
-      try {
-        go.setInteractive();
-        go.on('pointerover', makeOver(sr, x, y));
-        go.on('pointerout', makeOut());
-      } catch (e) {
-        hoverHandlers.over = makeOver(sr, x, y);
-        hoverHandlers.out = makeOut();
+    // Create a dedicated interactive Zone for reliable pointer hit-testing when available.
+    let hitZone = null;
+    try {
+      if (this._scene && this._scene.add && typeof this._scene.add.zone === 'function') {
+        try {
+          hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
+          if (hitZone && typeof hitZone.setInteractive === 'function') {
+            hitZone.setInteractive();
+            const overFn = makeOver(sr, x, y);
+            const outFn = makeOut();
+            try { hitZone.on('pointerover', overFn); } catch (e) {}
+            try { hitZone.on('pointerout', outFn); } catch (e) {}
+            hoverHandlers.over = overFn;
+            hoverHandlers.out = outFn;
+          } else {
+            // fallback: attach handlers to visual if zone isn't interactive
+            if (go && typeof go.setInteractive === 'function') {
+              const overFn = makeOver(sr, x, y);
+              const outFn = makeOut();
+              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); hoverHandlers.over = overFn; hoverHandlers.out = outFn; } catch (e) { hoverHandlers.over = overFn; hoverHandlers.out = outFn; }
+            } else { hoverHandlers.over = makeOver(sr, x, y); hoverHandlers.out = makeOut(); }
+          }
+        } catch (e) {
+          hitZone = null;
+            if (go && typeof go.setInteractive === 'function') {
+              const overFn = makeOver(sr, x, y);
+              const outFn = makeOut();
+              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); hoverHandlers.over = overFn; hoverHandlers.out = outFn; } catch (e) { hoverHandlers.over = overFn; hoverHandlers.out = outFn; }
+          } else { hoverHandlers.over = makeOver(sr, x, y); hoverHandlers.out = makeOut(); }
+        }
+      } else {
+        // No zone API (tests or very old runtimes): attach to visual or expose handlers
+        if (go && typeof go.setInteractive === 'function') {
+          const overFn = makeOver(sr, x, y);
+          const outFn = makeOut();
+          try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); hoverHandlers.over = overFn; hoverHandlers.out = outFn; } catch (e) { hoverHandlers.over = overFn; hoverHandlers.out = outFn; }
+        } else { hoverHandlers.over = makeOver(sr, x, y); hoverHandlers.out = makeOut(); }
       }
-    } else {
+    } catch (e) {
       hoverHandlers.over = makeOver(sr, x, y);
       hoverHandlers.out = makeOut();
     }
 
-    this._stockpiles.push({ obj: go, hoverHandlers, createdAsImage, x, y });
+    this._stockpiles.push({ obj: go, hitZone, hoverHandlers, createdAsImage, x, y });
   }
 
   _clearStockpiles() {
@@ -267,9 +296,15 @@ export default class StockpileRenderer {
     this._hoverCard = null;
 
     for (const it of this._stockpiles) {
-      try { if (it.obj && typeof it.obj.destroy === 'function') it.obj.destroy(); } catch (e) {}
-      // try to remove interactive handlers if present
+      try {
+        // remove handlers and destroy hit zone if present
+        if (it.hitZone) {
+          try { if (typeof it.hitZone.off === 'function') { it.hitZone.off('pointerover'); it.hitZone.off('pointerout'); } } catch (e) {}
+          try { if (typeof it.hitZone.destroy === 'function') it.hitZone.destroy(); } catch (e) {}
+        }
+      } catch (e) {}
       try { if (it.obj && typeof it.obj.off === 'function') { it.obj.off('pointerover'); it.obj.off('pointerout'); } } catch (e) {}
+      try { if (it.obj && typeof it.obj.destroy === 'function') it.obj.destroy(); } catch (e) {}
     }
     this._stockpiles = [];
     this._centredOnce = false;
