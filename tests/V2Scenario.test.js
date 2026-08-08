@@ -77,3 +77,50 @@ test('ScenarioLoader.load emits scenario:loaded via eventBus', async () => {
   assert.equal(events[0].k, 'scenario:loaded');
   assert.equal(events[0].v.id, 2);
 });
+
+test('DataLoader.loadScenario preserves scenario_objects and machine metadata', async () => {
+  const scenarioFixture = {
+    id: 2,
+    name: 'Dandenong South Closed Loop Hub',
+    scenario_objects: [
+      {
+        id: 1,
+        scenario_id: 2,
+        object_key: 'dandenong-existing-wastewater-plant',
+        object_type: 'machine',
+        name: 'Regional Wastewater Treatment Plant',
+        machine_id: 2,
+        position_x: 320,
+        position_y: 0,
+        rotation: 0,
+        fixed: true,
+        selectable: true,
+        object_config: {},
+        notes: "Represents existing regional wastewater treatment infrastructure serving Melbourne's south-east.",
+        machine: { id: 2, stable_key: null, name: 'Wastewater Treatment Plant', category: 'Water Treatment', image: 'Primary_Clarifier.png' },
+      },
+    ],
+  };
+
+  const api = { fetchScenario: async (id) => scenarioFixture };
+  const dl = new DataLoader({ apiCoordinator: api });
+  const loaded = await dl.loadScenario(2);
+  assert.ok(Array.isArray(loaded.scenario_objects));
+  assert.equal(loaded.scenario_objects.length, 1);
+  const so = loaded.scenario_objects[0];
+  assert.equal(so.id, 1);
+  assert.equal(so.machine.id, 2);
+  assert.equal(so.machine.name, 'Wastewater Treatment Plant');
+  // object_config should be preserved as an object (empty object serializes as {})
+  assert.equal(typeof so.object_config, 'object');
+  assert.equal(Object.keys(so.object_config).length, 0);
+});
+
+test('DataLoader.loadScenario tolerates empty scenario_objects', async () => {
+  const scenarioFixture = { id: 2, name: 'Dandenong South Closed Loop Hub', scenario_objects: [] };
+  const api = { fetchScenario: async (id) => scenarioFixture };
+  const dl = new DataLoader({ apiCoordinator: api });
+  const loaded = await dl.loadScenario(2);
+  assert.ok(Array.isArray(loaded.scenario_objects));
+  assert.equal(loaded.scenario_objects.length, 0);
+});

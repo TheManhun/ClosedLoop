@@ -207,7 +207,7 @@ class SupabaseService
     {
         // Request fields: id,stable_key,name,population,reference_year,data_status,
         // and nested scenario_resources with joined resources fields.
-        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type))');
+        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type)),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image))');
         $url = $this->baseUrl.'/rest/v1/scenarios?id=eq.'.rawurlencode((string) $id).'&select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
@@ -228,6 +228,7 @@ class SupabaseService
                 'reference_year' => $s['reference_year'] ?? null,
                 'data_status' => $s['data_status'] ?? null,
                 'scenario_resources' => [],
+                'scenario_objects' => [],
             ];
 
             if (! empty($s['scenario_resources']) && is_array($s['scenario_resources'])) {
@@ -276,6 +277,45 @@ class SupabaseService
 
                     return $sa <=> $sb;
                 });
+            }
+
+            // Normalize scenario_objects if provided (include nested machines relation)
+            if (! empty($s['scenario_objects']) && is_array($s['scenario_objects'])) {
+                foreach ($s['scenario_objects'] as $so) {
+                    $machinesObj = $so['machines'] ?? $so['machine'] ?? null;
+                    if (is_array($machinesObj) && array_values($machinesObj) === $machinesObj) {
+                        $machinesObj = $machinesObj[0] ?? null;
+                    }
+
+                    // Normalize object_config: convert empty arrays to empty object so JSON encodes as {}
+                    $objConf = $so['object_config'] ?? null;
+                    if (is_array($objConf) && empty($objConf)) {
+                        $objConf = (object) [];
+                    }
+
+                    $out['scenario_objects'][] = [
+                        'id' => $so['id'] ?? null,
+                        'scenario_id' => $so['scenario_id'] ?? null,
+                        'object_key' => $so['object_key'] ?? null,
+                        'object_type' => $so['object_type'] ?? null,
+                        'name' => $so['name'] ?? null,
+                        'machine_id' => $so['machine_id'] ?? null,
+                        'position_x' => $so['position_x'] ?? null,
+                        'position_y' => $so['position_y'] ?? null,
+                        'rotation' => $so['rotation'] ?? null,
+                        'fixed' => isset($so['fixed']) ? boolval($so['fixed']) : null,
+                        'selectable' => isset($so['selectable']) ? boolval($so['selectable']) : null,
+                        'object_config' => $objConf,
+                        'notes' => $so['notes'] ?? null,
+                        'machine' => $machinesObj ? [
+                            'id' => $machinesObj['id'] ?? null,
+                            'stable_key' => $machinesObj['stable_key'] ?? null,
+                            'name' => $machinesObj['name'] ?? null,
+                            'category' => $machinesObj['category'] ?? null,
+                            'image' => $machinesObj['image'] ?? null,
+                        ] : null,
+                    ];
+                }
             }
 
             return $out;
