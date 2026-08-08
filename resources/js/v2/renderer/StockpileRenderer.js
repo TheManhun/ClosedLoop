@@ -196,6 +196,8 @@ export default class StockpileRenderer {
       const qtyRaw = (srLocal && (srLocal.current_quantity != null ? srLocal.current_quantity : srLocal.initial_quantity != null ? srLocal.initial_quantity : '')) || '';
       const qty = (typeof qtyRaw === 'number' || (!isNaN(Number(qtyRaw)) && qtyRaw !== '')) ? Number(qtyRaw).toLocaleString('en-US') : String(qtyRaw);
       const unit = (srLocal && srLocal.unit) || (srLocal && srLocal.resource && srLocal.resource.unit) || '';
+
+      // Build lines with clear hierarchy and left alignment
       const lines = [];
       lines.push(name);
       if (category) lines.push(category);
@@ -205,20 +207,68 @@ export default class StockpileRenderer {
       let txt = null;
       let bg = null;
       try {
-        txt = this._scene.add.text(Math.round(px), Math.round(py - size / 2 - 8), lines.join('\n'), { fontFamily: 'monospace', fontSize: '13px', color: '#111', align: 'center', wordWrap: { width: Math.floor(this.cellSize * 1.5) } });
+        // Temporary placement: bottom-center relative to stockpile; will compute exact left/top after measuring
+        const style = { fontFamily: 'monospace', fontSize: '13px', color: '#eee', align: 'left', wordWrap: { width: Math.floor(this.cellSize * 2) } };
+        // create text with newline-separated content
+        txt = this._scene.add.text(Math.round(px), Math.round(py - size / 2 - 8), lines.join('\n'), style);
         if (typeof txt.setOrigin === 'function') txt.setOrigin(0.5, 1);
         if (typeof txt.setDepth === 'function') txt.setDepth(60);
+
+        // determine metrics with fallbacks
+        let metrics = null;
+        try { metrics = txt && typeof txt.getTextBounds === 'function' ? txt.getTextBounds() : null; } catch (e) { metrics = null; }
+        const textW = metrics ? Math.ceil(metrics.global.width) : Math.floor(this.cellSize * 1.4);
+        const textH = metrics ? Math.ceil(metrics.global.height) : 48;
+
+        const padding = 8;
+        const minW = Math.floor(this.cellSize * 1.2);
+        const w = Math.max(minW, textW + padding * 2);
+        const h = textH + padding * 2;
+
+        // compute left/top so that card is above the stockpile and does not cover it more than necessary
+        let left = Math.round(px - w / 2);
+        let top = Math.round(py - size / 2 - 8 - h);
+
+        // clamp to camera viewport if available
+        try {
+          const cam = this._scene && this._scene.cameras && this._scene.cameras.main;
+          if (cam && cam.worldView) {
+            const vw = cam.worldView.x || 0;
+            const vh = cam.worldView.y || 0;
+            const vwW = cam.worldView.width || (cam.width || 800);
+            const vwH = cam.worldView.height || (cam.height || 600);
+            if (left < vw) left = vw + 4;
+            if (left + w > vw + vwW) left = Math.max(vw + 4, vw + vwW - w - 4);
+            if (top < vh) {
+              // try placing to the side if not enough space above
+              const altLeft = Math.round(px + size / 2 + 8);
+              const altTop = Math.round(py - Math.round(h / 2));
+              if (altLeft + w <= vw + vwW) { left = altLeft; top = altTop; }
+              else top = vh + 4;
+            }
+          }
+        } catch (e) {}
+
+        // place background graphics
         if (this._scene.add && typeof this._scene.add.graphics === 'function') {
           bg = this._scene.add.graphics();
           try {
-            const metrics = txt && txt.getTextBounds ? txt.getTextBounds() : null;
-            const w = metrics ? Math.ceil(metrics.global.width) + 8 : Math.floor(this.cellSize * 1.2);
-            const h = metrics ? Math.ceil(metrics.global.height) + 8 : 48;
-            if (typeof bg.fillStyle === 'function') bg.fillStyle(0xFFFFFF, 0.95);
-            if (typeof bg.fillRect === 'function') bg.fillRect(Math.round(px - w / 2), Math.round(py - size / 2 - 8 - h), w, h);
+            if (typeof bg.fillStyle === 'function') bg.fillStyle(0x111111, 0.85);
+            if (typeof bg.fillRect === 'function') bg.fillRect(left, top, w, h);
+            if (typeof bg.lineStyle === 'function') bg.lineStyle(1, 0xffffff, 0.06);
+            if (typeof bg.strokeRect === 'function') bg.strokeRect(left, top, w, h);
             if (typeof bg.setDepth === 'function') bg.setDepth(59);
           } catch (e) {}
         }
+
+        // re-position text inside bg with padding and left-align
+        try {
+          const textX = left + padding;
+          const textY = top + h - padding; // bottom-left
+          if (typeof txt.setOrigin === 'function') txt.setOrigin(0, 1);
+          try { if (typeof txt.setPosition === 'function') txt.setPosition(textX, textY); else { txt.x = textX; txt.y = textY; } } catch (e) { txt.x = textX; txt.y = textY; }
+        } catch (e) {}
+
       } catch (e) {
         txt = null; bg = null;
       }
