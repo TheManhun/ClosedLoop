@@ -1467,15 +1467,15 @@ PrototypeScene.prototype._refreshPowerBalance = function () {
         statusClass
     };
 
-    const formatValue = (value) => {
+    function formatValue(value) {
         if (!Number.isFinite(value)) return '0';
         return `${value.toFixed(value >= 100 ? 0 : 1)} MW`;
-    };
+    }
 
-    const formatPercent = (value) => {
+    function formatPercent(value) {
         if (!Number.isFinite(value)) return '0%';
         return `${value.toFixed(0)}%`;
-    };
+    }
 
     const maxBarValue = Math.max(1, totalGeneration, totalDemand);
     const generationPct = Math.max(8, Math.min(100, (totalGeneration / maxBarValue) * 100));
