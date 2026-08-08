@@ -165,21 +165,35 @@ export default class StockpileRenderer {
     let go = null;
     let createdAsImage = false;
     try {
-      const texExists = (texKey && this._scene.textures && typeof this._scene.textures.exists === 'function') ? this._scene.textures.exists(texKey) : false;
-      if (texKey && texExists && this._scene.add && typeof this._scene.add.image === 'function') {
-        go = this._scene.add.image(Math.round(x), Math.round(y), texKey);
-        if (go && typeof go.setOrigin === 'function') go.setOrigin(0.5, 0.5);
-        if (go && typeof go.setDepth === 'function') go.setDepth(10);
-        if (go && typeof go.setDisplaySize === 'function') {
-          try { go.setDisplaySize(size, size); } catch (e) {}
+      // use family visual based on resource visual_type; pass imgKey through for optional image
+      const visualType = (sr && sr.resource && sr.resource.visual_type) || 'generic';
+      const imgKeyLocal = texKey || (sr && sr.resource && sr.resource.image) || null;
+      try {
+        switch (visualType) {
+          case 'bulk_solid':
+            go = this._createBulkSolidVisual(sr, x, y, size, imgKeyLocal);
+            break;
+          case 'liquid':
+            go = this._createLiquidVisual(sr, x, y, size, imgKeyLocal);
+            break;
+          case 'gas':
+            go = this._createGasVisual(sr, x, y, size, imgKeyLocal);
+            break;
+          case 'mixed_waste':
+            go = this._createMixedWasteVisual(sr, x, y, size, imgKeyLocal);
+            break;
+          default:
+            go = this._createGenericVisual(sr, x, y, size, imgKeyLocal);
         }
-        createdAsImage = true;
-      } else {
-        const g = this._scene.add.graphics();
-        if (typeof g.fillStyle === 'function') g.fillStyle(0x888888, 1);
-        if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size);
-        if (typeof g.setDepth === 'function') g.setDepth(10);
-        go = g;
+      } catch (e) {
+        // fallback to simple graphics
+        try {
+          const g = this._scene.add.graphics();
+          if (typeof g.fillStyle === 'function') g.fillStyle(0x888888, 1);
+          if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size);
+          if (typeof g.setDepth === 'function') g.setDepth(10);
+          go = g;
+        } catch (e) { go = null; }
       }
     } catch (e) {
       go = null;
@@ -338,6 +352,156 @@ export default class StockpileRenderer {
     }
 
     this._stockpiles.push({ obj: go, hitZone, hoverHandlers, createdAsImage, x, y });
+  }
+
+  // Helper: create bulk solid visual (hopper / pile)
+  _createBulkSolidVisual(sr, x, y, size, imgKey) {
+    const scene = this._scene;
+    const g = scene.add.graphics();
+    try { if (typeof g.fillStyle === 'function') g.fillStyle(0x6b6b6b, 1); } catch (e) {}
+    try { if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size); } catch (e) {}
+    try { if (typeof g.setDepth === 'function') g.setDepth(10); } catch (e) {}
+    g._family = 'bulk_solid';
+    // attach optional material image if available
+    let img = null;
+    try {
+      if (imgKey && scene.add && typeof scene.add.image === 'function') {
+        img = scene.add.image(Math.round(x), Math.round(y), imgKey);
+        try { if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5); } catch (e) {}
+        try { if (typeof img.setDepth === 'function') img.setDepth(11); } catch (e) {}
+        // Fit image into the bulk solid interior while preserving aspect ratio.
+        try {
+          const fillRatio = 0.88; // target 85-90% interior fill
+          const maxW = Math.round(size * fillRatio);
+          const maxH = Math.round(size * fillRatio);
+          const iw = img.width || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].width) || null;
+          const ih = img.height || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].height) || null;
+          if (iw && ih) {
+            const scale = Math.min(maxW / iw, maxH / ih);
+            if (typeof img.setScale === 'function') img.setScale(scale);
+            else if (typeof img.setDisplaySize === 'function') img.setDisplaySize(Math.round(iw * scale), Math.round(ih * scale));
+          } else if (typeof img.setDisplaySize === 'function') {
+            img.setDisplaySize(maxW, maxH);
+          }
+        } catch (e) {}
+      }
+    } catch (e) { img = null; }
+    if (img) g._attachedImage = img;
+    // decorative conveyor stub
+    try { const c = scene.add.graphics(); if (typeof c.fillStyle === 'function') c.fillStyle(0x444444, 1); if (typeof c.fillRect === 'function') c.fillRect(Math.round(x + size / 2 - 6), Math.round(y + size / 4), 6, Math.round(size / 4)); if (typeof c.setDepth === 'function') c.setDepth(9); g._decor = c; } catch (e) {}
+    // override destroy to clean children
+    const origDestroy = g.destroy ? g.destroy.bind(g) : null;
+    g.destroy = function() {
+      try { if (this._attachedImage && typeof this._attachedImage.destroy === 'function') this._attachedImage.destroy(); } catch (e) {}
+      try { if (this._decor && typeof this._decor.destroy === 'function') this._decor.destroy(); } catch (e) {}
+      try { if (origDestroy) origDestroy(); }
+      catch (e) {}
+    };
+    return g;
+  }
+
+  _createMixedWasteVisual(sr, x, y, size, imgKey) {
+    const scene = this._scene;
+    const g = scene.add.graphics();
+    try { if (typeof g.fillStyle === 'function') g.fillStyle(0x5a4f4f, 1); } catch (e) {}
+    try { if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, Math.round(size * 0.7)); } catch (e) {}
+    try { if (typeof g.setDepth === 'function') g.setDepth(10); } catch (e) {}
+    g._family = 'mixed_waste';
+    let img = null;
+    try {
+      if (imgKey && scene.add && typeof scene.add.image === 'function') {
+        img = scene.add.image(Math.round(x), Math.round(y - Math.round(size * 0.1)), imgKey);
+        try { if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5); } catch (e) {}
+        try { if (typeof img.setDepth === 'function') img.setDepth(11); } catch (e) {}
+        // Fit image into mixed waste interior while preserving aspect ratio
+        try {
+          const fillRatio = 0.88;
+          const interiorW = size; // full width
+          const interiorH = Math.round(size * 0.7); // mixed waste height
+          const maxW = Math.round(interiorW * fillRatio);
+          const maxH = Math.round(interiorH * fillRatio);
+          const iw = img.width || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].width) || null;
+          const ih = img.height || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].height) || null;
+          if (iw && ih) {
+            const scale = Math.min(maxW / iw, maxH / ih);
+            if (typeof img.setScale === 'function') img.setScale(scale);
+            else if (typeof img.setDisplaySize === 'function') img.setDisplaySize(Math.round(iw * scale), Math.round(ih * scale));
+          } else if (typeof img.setDisplaySize === 'function') {
+            img.setDisplaySize(maxW, maxH);
+          }
+        } catch (e) {}
+      }
+    } catch (e) { img = null; }
+    if (img) g._attachedImage = img;
+    // decorative conveyor stub
+    try { const c = scene.add.graphics(); if (typeof c.fillStyle === 'function') c.fillStyle(0x333333, 1); if (typeof c.fillRect === 'function') c.fillRect(Math.round(x + size / 2 - 8), Math.round(y), 8, Math.round(size * 0.18)); if (typeof c.setDepth === 'function') c.setDepth(9); g._decor = c; } catch (e) {}
+    const origDestroy = g.destroy ? g.destroy.bind(g) : null;
+    g.destroy = function() { try { if (this._attachedImage && typeof this._attachedImage.destroy === 'function') this._attachedImage.destroy(); } catch (e) {} try { if (this._decor && typeof this._decor.destroy === 'function') this._decor.destroy(); } catch (e) {} try { if (origDestroy) origDestroy(); } catch (e) {} };
+    return g;
+  }
+
+  _createLiquidVisual(sr, x, y, size, imgKey) {
+    const scene = this._scene;
+    const g = scene.add.graphics();
+    try { if (typeof g.fillStyle === 'function') g.fillStyle(0x2b6b8a, 1); } catch (e) {}
+    try { if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 3), size, Math.round(size * 0.5)); } catch (e) {}
+    try { if (typeof g.setDepth === 'function') g.setDepth(10); } catch (e) {}
+    g._family = 'liquid';
+    let img = null;
+    try {
+      if (imgKey && scene.add && typeof scene.add.image === 'function') {
+        img = scene.add.image(Math.round(x), Math.round(y - Math.round(size * 0.05)), imgKey);
+        try { if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5); } catch (e) {}
+        try { if (typeof img.setDepth === 'function') img.setDepth(11); } catch (e) {}
+        // Fit image into liquid interior while preserving aspect ratio
+        try {
+          const fillRatio = 0.88;
+          const interiorW = size;
+          const interiorH = Math.round(size * 0.5); // liquid rect height
+          const maxW = Math.round(interiorW * fillRatio);
+          const maxH = Math.round(interiorH * fillRatio);
+          const iw = img.width || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].width) || null;
+          const ih = img.height || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].height) || null;
+          if (iw && ih) {
+            const scale = Math.min(maxW / iw, maxH / ih);
+            if (typeof img.setScale === 'function') img.setScale(scale);
+            else if (typeof img.setDisplaySize === 'function') img.setDisplaySize(Math.round(iw * scale), Math.round(ih * scale));
+          } else if (typeof img.setDisplaySize === 'function') {
+            img.setDisplaySize(maxW, maxH);
+          }
+        } catch (e) {}
+      }
+    } catch (e) { img = null; }
+    if (img) g._attachedImage = img;
+    // decorative pipe outlet
+    try { const p = scene.add.graphics(); if (typeof p.fillStyle === 'function') p.fillStyle(0x666666, 1); if (typeof p.fillRect === 'function') p.fillRect(Math.round(x + size / 2 - 6), Math.round(y - 2), 6, 6); if (typeof p.setDepth === 'function') p.setDepth(9); g._decor = p; } catch (e) {}
+    const origDestroy = g.destroy ? g.destroy.bind(g) : null;
+    g.destroy = function() { try { if (this._attachedImage && typeof this._attachedImage.destroy === 'function') this._attachedImage.destroy(); } catch (e) {} try { if (this._decor && typeof this._decor.destroy === 'function') this._decor.destroy(); } catch (e) {} try { if (origDestroy) origDestroy(); } catch (e) {} };
+    return g;
+  }
+
+  _createGasVisual(sr, x, y, size, imgKey) {
+    const scene = this._scene;
+    const g = scene.add.graphics();
+    try { if (typeof g.fillStyle === 'function') g.fillStyle(0x7a7a7a, 1); } catch (e) {}
+    try { if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 4), Math.round(y - size / 2), Math.round(size / 2), size); } catch (e) {}
+    try { if (typeof g.setDepth === 'function') g.setDepth(10); } catch (e) {}
+    g._family = 'gas';
+    const origDestroy = g.destroy ? g.destroy.bind(g) : null;
+    g.destroy = function() { try { if (origDestroy) origDestroy(); } catch (e) {} };
+    return g;
+  }
+
+  _createGenericVisual(sr, x, y, size, imgKey) {
+    const scene = this._scene;
+    const g = scene.add.graphics();
+    try { if (typeof g.fillStyle === 'function') g.fillStyle(0x999999, 1); } catch (e) {}
+    try { if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size); } catch (e) {}
+    try { if (typeof g.setDepth === 'function') g.setDepth(10); } catch (e) {}
+    g._family = 'generic';
+    const origDestroy = g.destroy ? g.destroy.bind(g) : null;
+    g.destroy = function() { try { if (origDestroy) origDestroy(); } catch (e) {} };
+    return g;
   }
 
   _clearStockpiles() {

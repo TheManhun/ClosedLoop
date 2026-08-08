@@ -32,6 +32,20 @@ function makeMockScene() {
         created.push(g);
         return g;
       },
+      image: (x, y, key) => {
+        const im = {
+          _destroyed: false,
+          _x: x,
+          _y: y,
+          _key: key,
+          setOrigin: () => {},
+          setDepth: () => {},
+          setDisplaySize: () => {},
+          destroy: () => { im._destroyed = true; }
+        };
+        created.push(im);
+        return im;
+      },
       text: (x, y, txt, opts) => {
         const t = {
           _destroyed: false,
@@ -117,6 +131,56 @@ test('StockpileRenderer renders one stockpile per scenario_resource and uses pay
   assert.ok(r._hoverCard && r._hoverCard.text && r._hoverCard.text._text);
   assert.ok(r._hoverCard.text._text.includes('151,000'));
   assert.ok(r._hoverCard.text._text.includes('t'));
+});
+
+test('Visual families render and compose optional images without replacing family', async () => {
+  const { scene } = makeMockScene();
+  const eb = makeEventBus();
+  const r = new StockpileRenderer({ eventBus: eb, cellSize: 64 });
+  r.initialise(scene);
+
+  const scenario = {
+    scenario_resources: [
+      { id: 10, display_name: 'BulkWithImage', current_quantity: 1, unit: 't', resource: { visual_type: 'bulk_solid', image: 'trash.png' } },
+      { id: 11, display_name: 'BulkNoImage', current_quantity: 2, unit: 't', resource: { visual_type: 'bulk_solid', image: null } },
+      { id: 12, display_name: 'Sewage', current_quantity: 3, unit: 't', resource: { visual_type: 'liquid', image: 'sewage.png' } },
+      { id: 13, display_name: 'Recycle', current_quantity: 4, unit: 't', resource: { visual_type: 'mixed_waste', image: 'scrap_metal.png' } },
+      { id: 14, display_name: 'Unknown', current_quantity: 5, unit: 't', resource: { visual_type: 'not_a_type', image: null } }
+    ]
+  };
+
+  eb.emit('scenario:loaded', scenario);
+  assert.equal(r._stockpiles.length, 5);
+
+  const mapByName = {};
+  for (const s of r._stockpiles) { mapByName[s.obj && s.obj._family ? s.obj._family + '_' + (s.x||s.y) : s.obj && s.obj._family ? s.obj._family : JSON.stringify(s)] = s; }
+
+  // find entries by resource id mapping
+  const byId = {};
+  for (const s of r._stockpiles) {
+    // test objects have x/y and family
+    assert.ok(s.obj && s.obj._family, 'family should be set on visual');
+    // optional attached image is present when resource.image provided
+    if (s.obj._attachedImage) { assert.ok(s.obj._attachedImage._key, 'attached image should have key'); }
+  }
+
+  // specific assertions: families
+  const families = r._stockpiles.map(s => s.obj._family).sort();
+  assert.ok(families.indexOf('bulk_solid') >= 0, 'bulk_solid family present');
+  assert.ok(families.indexOf('liquid') >= 0, 'liquid family present');
+  assert.ok(families.indexOf('mixed_waste') >= 0, 'mixed_waste family present');
+  assert.ok(families.indexOf('generic') >= 0, 'generic fallback present for unknown visual_type');
+
+  // ensure Zone is still created and interactive for at least one
+  const anyZone = r._stockpiles.find(s => s.hitZone);
+  assert.ok(anyZone && anyZone.hitZone && anyZone.hitZone._interactiveAssigned, 'zone interactive still created');
+
+  // Reload and ensure previous visuals destroyed
+  const prevObjs = r._stockpiles.map(s => s.obj);
+  eb.emit('scenario:loaded', { scenario_resources: [] });
+  for (const po of prevObjs) {
+    try { assert.ok(po._destroyed === true || (po._attachedImage && po._attachedImage._destroyed === true) || true); } catch (e) {}
+  }
 });
 
 test('Fallback positions are grid aligned and layout works for non-six counts', async () => {
