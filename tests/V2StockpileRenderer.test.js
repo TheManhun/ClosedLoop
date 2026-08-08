@@ -5,6 +5,8 @@ import StockpileRenderer from '../resources/js/v2/renderer/StockpileRenderer.js'
 
 function makeMockScene() {
   const created = [];
+  const loads = [];
+  let completeHandler = null;
   const scene = {
     add: {
       zone: (x, y, w, h) => {
@@ -61,12 +63,27 @@ function makeMockScene() {
         return t;
       }
     },
+    load: {
+      image: (key, url) => { loads.push({ key, url }); },
+      once: (ev, h) => { if (ev === 'complete') completeHandler = h; },
+      start: () => { if (typeof completeHandler === 'function') completeHandler(); },
+    },
+    _loads: loads,
     events: {
       on: () => {},
       off: () => {},
     }
   };
   return { scene, created };
+}
+
+function makeEventBus() {
+  const handlers = {};
+  return {
+    on: (k, h) => { if (!handlers[k]) handlers[k] = new Set(); handlers[k].add(h); },
+    off: (k, h) => { if (!handlers[k]) return; handlers[k].delete(h); },
+    emit: (k, v) => { const s = handlers[k]; if (!s) return; for (const h of Array.from(s)) h(v); }
+  };
 }
 
 test('Creates a Zone per stockpile and attaches interactive handlers to the Zone', async () => {
@@ -95,15 +112,6 @@ test('Creates a Zone per stockpile and attaches interactive handlers to the Zone
   r.destroy();
   assert.equal(r._stockpiles.length, 0);
 });
-
-function makeEventBus() {
-  const handlers = {};
-  return {
-    on: (k, h) => { if (!handlers[k]) handlers[k] = new Set(); handlers[k].add(h); },
-    off: (k, h) => { if (!handlers[k]) return; handlers[k].delete(h); },
-    emit: (k, v) => { const s = handlers[k]; if (!s) return; for (const h of Array.from(s)) h(v); }
-  };
-}
 
 test('StockpileRenderer renders one stockpile per scenario_resource and uses payload values', async () => {
   const { scene } = makeMockScene();
@@ -152,10 +160,13 @@ test('Visual families render and compose optional images without replacing famil
   eb.emit('scenario:loaded', scenario);
   assert.equal(r._stockpiles.length, 5);
 
+  // loader should have been registered for resource images using resourceImage resolver
+  assert.ok(scene._loads && scene._loads.some(l => l.url === '/images/resources/trash.png'));
+
   const mapByName = {};
   for (const s of r._stockpiles) { mapByName[s.obj && s.obj._family ? s.obj._family + '_' + (s.x||s.y) : s.obj && s.obj._family ? s.obj._family : JSON.stringify(s)] = s; }
 
-  // find entries by resource id mapping
+  // find entries by resource id mapping and assert families and attached images
   const byId = {};
   for (const s of r._stockpiles) {
     // test objects have x/y and family

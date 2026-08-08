@@ -1,3 +1,5 @@
+import { resourceImage } from './AssetPaths.js';
+
 export default class StockpileRenderer {
   constructor({ eventBus, cellSize = 64 } = {}) {
     this.eventBus = eventBus;
@@ -70,8 +72,9 @@ export default class StockpileRenderer {
 
         const normalizePath = (p) => {
           if (!p) return p;
+          // prefer resolver for v2 paths; allow absolute urls unchanged
           if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('/')) return p;
-          return '/' + p;
+          return resourceImage(p) || p;
         };
 
         const textureExists = (this._scene.textures && typeof this._scene.textures.exists === 'function') ? this._scene.textures.exists(texKey) : false;

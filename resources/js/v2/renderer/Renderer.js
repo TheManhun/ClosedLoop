@@ -3,6 +3,7 @@ import CameraController from './CameraController.js';
 import GridHighlightRenderer from './GridHighlightRenderer.js';
 import InputController from './InputController.js';
 import StockpileRenderer from './StockpileRenderer.js';
+import ScenarioObjectRenderer from './ScenarioObjectRenderer.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -45,6 +46,8 @@ export default class Renderer {
 
         const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
         this._stockpileRenderer = stockpileRenderer;
+        const scenarioObjectRenderer = new ScenarioObjectRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+        this._scenarioObjectRenderer = scenarioObjectRenderer;
       // production: do not expose internals to window
 
       // Create a minimal blank scene that initialises the grid during its create() phase.
@@ -72,6 +75,9 @@ export default class Renderer {
           if (typeof stockpileRenderer !== 'undefined' && stockpileRenderer && typeof stockpileRenderer.initialise === 'function') {
             // keep a reference on the renderer instance so destroy() can clean up
             try { stockpileRenderer.initialise(this); } catch (e) { /* ignore */ }
+          }
+          if (typeof scenarioObjectRenderer !== 'undefined' && scenarioObjectRenderer && typeof scenarioObjectRenderer.initialise === 'function') {
+            try { scenarioObjectRenderer.initialise(this); } catch (e) { /* ignore */ }
           }
           if (typeof inputController !== 'undefined' && inputController && typeof inputController.initialise === 'function') {
             inputController.initialise(this);
@@ -133,6 +139,11 @@ export default class Renderer {
     if (this._stockpileRenderer) {
       try { this._stockpileRenderer.destroy(); } catch (e) { /* ignore */ }
       this._stockpileRenderer = null;
+    }
+
+    if (this._scenarioObjectRenderer) {
+      try { this._scenarioObjectRenderer.destroy(); } catch (e) { /* ignore */ }
+      this._scenarioObjectRenderer = null;
     }
 
     // Destroy camera controller before destroying Phaser so it can unbind any references
