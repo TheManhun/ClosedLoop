@@ -124,3 +124,11 @@ test('DataLoader.loadScenario tolerates empty scenario_objects', async () => {
   assert.ok(Array.isArray(loaded.scenario_objects));
   assert.equal(loaded.scenario_objects.length, 0);
 });
+
+test('DataLoader.loadScenario preserves scenario.map_image when present', async () => {
+  const scenarioFixture = { id: 2, name: 'Dandenong South Closed Loop Hub', map_image: 'dandenong_vic.png', scenario_objects: [] };
+  const api = { fetchScenario: async (id) => scenarioFixture };
+  const dl = new DataLoader({ apiCoordinator: api });
+  const loaded = await dl.loadScenario(2);
+  assert.equal(loaded.map_image, 'dandenong_vic.png');
+});

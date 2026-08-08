@@ -4,6 +4,7 @@ import GridHighlightRenderer from './GridHighlightRenderer.js';
 import InputController from './InputController.js';
 import StockpileRenderer from './StockpileRenderer.js';
 import ScenarioObjectRenderer from './ScenarioObjectRenderer.js';
+import ScenarioMapRenderer from './ScenarioMapRenderer.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -48,6 +49,8 @@ export default class Renderer {
         this._stockpileRenderer = stockpileRenderer;
         const scenarioObjectRenderer = new ScenarioObjectRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
         this._scenarioObjectRenderer = scenarioObjectRenderer;
+        const scenarioMapRenderer = new ScenarioMapRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+        this._scenarioMapRenderer = scenarioMapRenderer;
       // production: do not expose internals to window
 
       // Create a minimal blank scene that initialises the grid during its create() phase.
@@ -69,6 +72,9 @@ export default class Renderer {
             // ignore
           }
 
+          if (typeof scenarioMapRenderer !== 'undefined' && scenarioMapRenderer && typeof scenarioMapRenderer.initialise === 'function') {
+            try { scenarioMapRenderer.initialise(this); } catch (e) { /* ignore */ }
+          }
           if (typeof gridRenderer !== 'undefined' && gridRenderer && typeof gridRenderer.initialise === 'function') {
             gridRenderer.initialise(this);
           }

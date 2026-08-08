@@ -207,7 +207,7 @@ class SupabaseService
     {
         // Request fields: id,stable_key,name,population,reference_year,data_status,
         // and nested scenario_resources with joined resources fields.
-        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type)),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image))');
+        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,map_image,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type)),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image))');
         $url = $this->baseUrl.'/rest/v1/scenarios?id=eq.'.rawurlencode((string) $id).'&select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
@@ -227,6 +227,7 @@ class SupabaseService
                 'population' => $s['population'] ?? null,
                 'reference_year' => $s['reference_year'] ?? null,
                 'data_status' => $s['data_status'] ?? null,
+                'map_image' => $s['map_image'] ?? null,
                 'scenario_resources' => [],
                 'scenario_objects' => [],
             ];
