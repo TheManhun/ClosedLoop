@@ -519,3 +519,6 @@ It may help students discover a passion for engineering, assist researchers in e
 We cannot predict where the next breakthrough in circular economy thinking will come from.
 
 But we can build a place where more people have the opportunity to find it.
+
+
+As the game progresses and the polution is eliminated we make the dirt turn to grass Degraded dirt → recovering soil → patchy grass → healthy green landscape.
