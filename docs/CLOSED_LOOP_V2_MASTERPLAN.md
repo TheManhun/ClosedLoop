@@ -128,31 +128,18 @@ NOT by:
 
 # Scenario One
 
-## Melbourne Legacy Landfill
+## Dandenong South Closed Loop Hub
 
-The first scenario begins on an old Melbourne landfill.
+This is the first implemented V2 scenario (see CL-022). It represents a regional circular‑economy processing challenge rather than a bounded legacy‑landfill redevelopment.
 
-The site already contains millions of tonnes of recoverable material.
+Key points:
 
-Examples:
-
-- Organic Waste
-- Mixed Waste
-- Construction Waste
-- Scrap Metal
-- Glass
-- Plastic
-- Landfill Gas
-- Leachate
-- Contaminated Water
-
-These exist as stockpiles from day one.
-
-No timer exists.
-
-The player simply asks
-
-"How can I use everything here?"
+- Regional resource and feedstock quantities define the starting problem and available stockpiles.
+- Existing infrastructure (for example, a regional wastewater treatment plant) may be supplied by scenario data and is part of the scenario definition.
+- The engineering workspace is expandable and represents layout/engineering space rather than a fixed parcel‑size constraint.
+- Starting environmental liabilities / pollutant resources appear only when explicitly defined in Supabase for that scenario.
+- Landfill‑specific pollutants (for example: landfill gas, methane, leachate) are not assumed by default for Dandenong South; they are valid for dedicated landfill scenarios if seeded in Supabase.
+- The core Closed Loop philosophy remains: every practical output should become an input to another process.
 
 ---
 
@@ -596,7 +583,7 @@ Ports
 
 Airports
 
-But Version 2 focuses ONLY on the Melbourne landfill.
+Version 2 initially focuses on the Dandenong South Closed Loop Hub (see CL-022). The Melbourne Legacy Landfill remains a valid future scenario.
 
 ---
 

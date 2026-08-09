@@ -254,7 +254,7 @@ Tasks
 
 □ Load starting objects
 
-□ Load pollution
+□ Load starting environmental liabilities / pollutant resources when defined by scenario data
 
 Expected Result
 
@@ -656,7 +656,7 @@ Never lose a working version.
 
 Closed Loop Version 2 MVP is complete when a user can:
 
-✔ Open Melbourne Legacy Landfill
+✔ Open Dandenong South Closed Loop Hub
 
 ✔ View stockpiles
 
@@ -674,7 +674,7 @@ Closed Loop Version 2 MVP is complete when a user can:
 
 ✔ Increase circularity
 
-✔ Complete the landfill challenge
+✔ Complete the scenario challenge
 
 without reading documentation.
 
