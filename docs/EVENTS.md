@@ -60,7 +60,10 @@ Events not implemented but mentioned in docs/roadmap
 
 Not implemented / roadmap events (proposed by roadmap; not present in code)
 - Examples mentioned in docs (no code evidence):
-  - `selection:changed` — (expected) when user selects a machine/resource.
+  - `selection:request` — (implemented) emitted by renderers when the user clicks a visual to request selection. Payload: `{ kind: 'resource'|'object'|'ground', id?, instance_key?, meta?, world? }`.
+  - `selection:changed` — (implemented) authoritative event emitted by `SelectionController` when the canonical selection state changes. Payload: `{ kind: 'resource'|'object'|'ground'|'clear', id|null, instance_key|null, meta|null, world|null }`.
+
+  Note: `SelectionController` is the sole producer of `selection:changed`. Renderers MUST emit `selection:request` and should not emit `selection:changed` directly.
   - `placement:begin` / `placement:confirm` / `placement:cancel` — placement lifecycle.
   - `simulation:tick` / `simulation:updated` — periodic simulation results.
   - `toolbox:updated` — toolbox contents changed.

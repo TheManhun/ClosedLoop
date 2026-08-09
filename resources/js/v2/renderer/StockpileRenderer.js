@@ -23,6 +23,9 @@ export default class StockpileRenderer {
     if (this.eventBus && typeof this.eventBus.on === 'function') {
       this._bound.onScenarioLoaded = (scenario) => this._onScenarioLoaded(scenario);
       this.eventBus.on('scenario:loaded', this._bound.onScenarioLoaded);
+      // listen for selection changes so we can highlight selected stockpile
+      this._bound.onSelectionChanged = (payload) => this._onSelectionChanged(payload);
+      this.eventBus.on('selection:changed', this._bound.onSelectionChanged);
     }
 
     this._initialised = true;
@@ -319,10 +322,20 @@ export default class StockpileRenderer {
           hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
           if (hitZone && typeof hitZone.setInteractive === 'function') {
             hitZone.setInteractive();
+            try { hitZone._selectionTarget = true; } catch (e) {}
             const overFn = makeOver(sr, x, y);
             const outFn = makeOut();
             try { hitZone.on('pointerover', overFn); } catch (e) {}
             try { hitZone.on('pointerout', outFn); } catch (e) {}
+            // pointerdown should emit a selection request
+            try { hitZone.on('pointerdown', (pointer) => {
+              try {
+                if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                  const payload = { kind: 'resource', id: sr && (sr.id ?? null), instance_key: sr && (sr.instance_key ?? null), meta: sr, world: { x, y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
+                  this.eventBus.emit('selection:request', payload);
+                }
+              } catch (e) {}
+            }); } catch (e) {}
             hoverHandlers.over = overFn;
             hoverHandlers.out = outFn;
           } else {
@@ -330,7 +343,12 @@ export default class StockpileRenderer {
             if (go && typeof go.setInteractive === 'function') {
               const overFn = makeOver(sr, x, y);
               const outFn = makeOut();
-              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); hoverHandlers.over = overFn; hoverHandlers.out = outFn; } catch (e) { hoverHandlers.over = overFn; hoverHandlers.out = outFn; }
+              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); try { go.on('pointerdown', (pointer) => {
+                if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                  const payload = { kind: 'resource', id: sr && (sr.id ?? null), instance_key: sr && (sr.instance_key ?? null), meta: sr, world: { x, y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
+                  this.eventBus.emit('selection:request', payload);
+                }
+              }); } catch (e) {} hoverHandlers.over = overFn; hoverHandlers.out = outFn; } catch (e) { hoverHandlers.over = overFn; hoverHandlers.out = outFn; }
             } else { hoverHandlers.over = makeOver(sr, x, y); hoverHandlers.out = makeOut(); }
           }
         } catch (e) {
@@ -354,7 +372,92 @@ export default class StockpileRenderer {
       hoverHandlers.out = makeOut();
     }
 
-    this._stockpiles.push({ obj: go, hitZone, hoverHandlers, createdAsImage, x, y });
+    // attach stable id for selection matching
+    try {
+      const srId = sr && (sr.id ?? null);
+      if (srId != null) {
+        try { if (go) go._resourceId = srId; } catch (e) {}
+        try { if (hitZone) hitZone._resourceId = srId; } catch (e) {}
+      }
+    } catch (e) {}
+    const entry = { obj: go, hitZone, hoverHandlers, createdAsImage, x, y };
+    try { entry._srKey = `${String(x)}:${String(y)}`; } catch (e) { entry._srKey = null; }
+    this._stockpiles.push(entry);
+  }
+
+  _onSelectionChanged(payload) {
+    try {
+      for (const it of this._stockpiles) {
+        const sr = it && it.obj ? it.obj : null;
+        // resource id may be present in hoverHandlers' closure; compare using stored meta when available
+        const matches = (it && it.hitZone && payload && payload.kind === 'resource' && it && it.x != null && it.y != null && (payload.id != null && ((it && it.obj && it.obj._resourceId && it.obj._resourceId === payload.id) || (it && it.obj && it.obj._resourceId == null && false)) )) || false;
+      }
+      // Simpler approach: match by meta object reference if available
+      for (const it of this._stockpiles) {
+        const meta = it && it.hoverHandlers && it.hoverHandlers.over && it.hoverHandlers.out ? null : null; // no-op to keep linters happy
+      }
+      // Use id matching by reading stored sr.id if we attached it. We'll attach _resourceId on first pass for robustness.
+      for (const it of this._stockpiles) {
+        try {
+          if (!it._srId && it.hitZone && it.hitZone._handlers && it.hitZone._handlers.pointerover && it.hitZone._handlers.pointerout) {
+            // we don't have direct access to sr here; previous closures captured sr but not stored. rely on x/y uniqueness fallback
+            // store a combined key from position as fallback
+            it._srKey = `${String(it.x)}:${String(it.y)}`;
+          }
+        } catch (e) {}
+      }
+
+      // Decide which entry to highlight: prefer id match if payload has id, else match by world coords
+      let selectedKey = null;
+      if (payload && payload.kind === 'resource' && payload.id != null) {
+        // find exact match by comparing payload.meta if present
+        for (const it of this._stockpiles) {
+          try {
+            if (it && it.obj && it.obj._resourceId && it.obj._resourceId === payload.id) { selectedKey = it._srKey || `${it.x}:${it.y}`; break; }
+          } catch (e) {}
+        }
+      }
+      if (!selectedKey && payload && payload.world) {
+        const wx = Number(payload.world.x || 0); const wy = Number(payload.world.y || 0);
+        // match by coordinate proximity
+        for (const it of this._stockpiles) {
+          try { if (Math.abs(Number(it.x || 0) - wx) < 1 && Math.abs(Number(it.y || 0) - wy) < 1) { selectedKey = it._srKey || `${it.x}:${it.y}`; break; } } catch (e) {}
+        }
+      }
+
+      // apply highlight state
+      for (const it of this._stockpiles) {
+        const key = it._srKey || `${it.x}:${it.y}`;
+        const should = (payload && payload.kind === 'resource' && selectedKey && key === selectedKey);
+        this._setSelectedHighlight(it, should);
+      }
+      // if clear, remove all
+      if (payload && payload.kind === 'clear') {
+        for (const it of this._stockpiles) this._setSelectedHighlight(it, false);
+      }
+    } catch (e) {}
+  }
+
+  _setSelectedHighlight(entry, enabled) {
+    try {
+      if (!entry) return;
+      if (!this._scene || !this._scene.add) return;
+      if (enabled) {
+        if (entry._selGraphic) return; // already highlighted
+        try {
+          const g = this._scene.add.graphics();
+          try { if (typeof g.lineStyle === 'function') g.lineStyle(2, 0xffff00, 0.95); } catch (e) {}
+          try { if (typeof g.strokeRect === 'function') g.strokeRect(Math.round((entry.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5)), Math.round((entry.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5)), Math.round(this.cellSize), Math.round(this.cellSize)); } catch (e) {}
+          try { if (typeof g.setDepth === 'function') g.setDepth(70); } catch (e) {}
+          entry._selGraphic = g;
+        } catch (e) {}
+      } else {
+        if (entry._selGraphic) {
+          try { if (typeof entry._selGraphic.destroy === 'function') entry._selGraphic.destroy(); } catch (e) {}
+          entry._selGraphic = null;
+        }
+      }
+    } catch (e) {}
   }
 
   // Helper: create bulk solid visual (hopper / pile)

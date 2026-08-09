@@ -5,6 +5,7 @@ import InputController from './InputController.js';
 import StockpileRenderer from './StockpileRenderer.js';
 import ScenarioObjectRenderer from './ScenarioObjectRenderer.js';
 import ScenarioMapRenderer from './ScenarioMapRenderer.js';
+import SelectionController from '../selection/SelectionController.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -47,6 +48,8 @@ export default class Renderer {
 
         const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
         this._stockpileRenderer = stockpileRenderer;
+        const selectionController = new SelectionController({ eventBus: this.eventBus });
+        this._selectionController = selectionController;
         const scenarioObjectRenderer = new ScenarioObjectRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
         this._scenarioObjectRenderer = scenarioObjectRenderer;
         const scenarioMapRenderer = new ScenarioMapRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
@@ -81,6 +84,9 @@ export default class Renderer {
           if (typeof stockpileRenderer !== 'undefined' && stockpileRenderer && typeof stockpileRenderer.initialise === 'function') {
             // keep a reference on the renderer instance so destroy() can clean up
             try { stockpileRenderer.initialise(this); } catch (e) { /* ignore */ }
+          }
+          if (typeof selectionController !== 'undefined' && selectionController && typeof selectionController.initialise === 'function') {
+            try { selectionController.initialise(this, inputController); } catch (e) { /* ignore */ }
           }
           if (typeof scenarioObjectRenderer !== 'undefined' && scenarioObjectRenderer && typeof scenarioObjectRenderer.initialise === 'function') {
             try { scenarioObjectRenderer.initialise(this); } catch (e) { /* ignore */ }
