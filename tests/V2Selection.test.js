@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import StockpileRenderer from '../resources/js/v2/renderer/StockpileRenderer.js';
+import ScenarioObjectRenderer from '../resources/js/v2/renderer/ScenarioObjectRenderer.js';
 import SelectionController from '../resources/js/v2/selection/SelectionController.js';
 
 function makeMockScene() {
@@ -179,4 +180,56 @@ test('Scenario reload clears/destroys stale selection visuals and destroy remove
   // ensure controllers can be destroyed without throwing
   assert.doesNotThrow(() => r.destroy());
   assert.doesNotThrow(() => sc.destroy());
+});
+
+test('Resource -> Object -> Resource -> ground-clear selection transitions', async () => {
+  const { scene } = makeMockScene();
+  const eb = makeEventBus();
+  const stock = new StockpileRenderer({ eventBus: eb, cellSize: 64 });
+  stock.initialise(scene);
+  const objR = new ScenarioObjectRenderer({ eventBus: eb, cellSize: 64 });
+  objR.initialise(scene);
+
+  const sc = new SelectionController({ eventBus: eb });
+  sc.initialise(scene, scene.input);
+
+  // scenario has one stockpile and one object
+  const scenario = {
+    scenario_resources: [ { id: 900, display_name: 'Res', current_quantity: 1, unit: 't', position_x: 0, position_y: 0 } ],
+    scenario_objects: [ { id: 77, object_key: 'wwtp-1', object_type: 'wastewater', selectable: true, position_x: 100, position_y: 0 } ]
+  };
+  eb.emit('scenario:loaded', scenario);
+
+  // ensure visuals created
+  assert.equal(stock._stockpiles.length, 1);
+  assert.equal(objR._objects.length, 1);
+  const sEntry = stock._stockpiles[0];
+  const oEntry = objR._objects[0];
+
+  // Click resource
+  sEntry.hitZone._handlers.pointerdown({ id: 1, currentlyOver: [sEntry.hitZone] });
+  assert.ok(sEntry._selGraphic, 'resource highlighted after select');
+
+  // Click object
+  if (oEntry.hitZone && oEntry.hitZone._handlers && typeof oEntry.hitZone._handlers.pointerdown === 'function') {
+    oEntry.hitZone._handlers.pointerdown({ id: 2, currentlyOver: [oEntry.hitZone] });
+  } else if (oEntry.obj && typeof oEntry.obj._handlers === 'object' && oEntry.obj._handlers.pointerdown) {
+    oEntry.obj._handlers.pointerdown({ id: 2, currentlyOver: [oEntry.obj] });
+  } else {
+    // if hitZone attached as Phaser API, simulate pointerdown via event bus
+    eb.emit('selection:request', { kind: 'object', id: 77, instance_key: 'wwtp-1', world: { x: 100, y: 0 }, _pointerId: 2 });
+  }
+
+  // object should be selected, resource deselected
+  assert.ok(oEntry._selGraphic, 'object highlighted after select');
+  assert.ok(!sEntry._selGraphic, 'resource deselected after object select');
+
+  // Click resource again
+  sEntry.hitZone._handlers.pointerdown({ id: 3, currentlyOver: [sEntry.hitZone] });
+  assert.ok(sEntry._selGraphic, 'resource highlighted after reselect');
+  assert.ok(!oEntry._selGraphic, 'object deselected after resource reselect');
+
+  // Click ground to clear
+  scene.input.emit('pointerdown', { id: 4, currentlyOver: [] });
+  assert.ok(!sEntry._selGraphic && !oEntry._selGraphic, 'both deselected after ground click');
 });

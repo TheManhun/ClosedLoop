@@ -18,6 +18,9 @@ export default class ScenarioObjectRenderer {
     if (this.eventBus && typeof this.eventBus.on === 'function') {
       this._bound.onScenarioLoaded = (scenario) => this._onScenarioLoaded(scenario);
       this.eventBus.on('scenario:loaded', this._bound.onScenarioLoaded);
+      // listen for selection changes so we can highlight selected scenario objects
+      this._bound.onSelectionChanged = (payload) => this._onSelectionChanged(payload);
+      this.eventBus.on('selection:changed', this._bound.onSelectionChanged);
     }
 
     this._initialised = true;
@@ -128,16 +131,115 @@ export default class ScenarioObjectRenderer {
       y: y,
     };
 
-    this._objects.push({ obj: go, texKey, meta, createdAsImage });
+    // create interactive hit zone so pointer events reliably target this object
+    let hitZone = null;
+    try {
+      if (this._scene && this._scene.add && typeof this._scene.add.zone === 'function') {
+        try {
+          hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
+          if (hitZone && typeof hitZone.setInteractive === 'function') {
+            hitZone.setInteractive();
+            try { hitZone._selectionTarget = true; } catch (e) {}
+            try { hitZone.on('pointerdown', (pointer) => {
+              try {
+                if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                  const payload = { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
+                  this.eventBus.emit('selection:request', payload);
+                }
+              } catch (e) {}
+            }); } catch (e) {}
+          } else {
+            // fallback: attach to visual if interactive
+            if (go && typeof go.setInteractive === 'function') {
+              try { go.setInteractive(); go.on('pointerdown', (pointer) => {
+                try { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); } catch (e) {}
+              }); } catch (e) {}
+            }
+          }
+        } catch (e) { hitZone = null; }
+      } else {
+        if (go && typeof go.setInteractive === 'function') {
+          try { go.setInteractive(); go.on('pointerdown', (pointer) => { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); }); } catch (e) {}
+        }
+      }
+    } catch (e) {}
+
+    this._objects.push({ obj: go, texKey, meta, createdAsImage, hitZone });
   }
 
   _clearObjects() {
     if (!this._objects || this._objects.length === 0) return;
     for (const e of this._objects) {
+      try {
+        if (e.hitZone) {
+          try { if (typeof e.hitZone.off === 'function') { e.hitZone.off('pointerdown'); e.hitZone.off('pointerover'); e.hitZone.off('pointerout'); } } catch (er) {}
+          try { if (typeof e.hitZone.destroy === 'function') e.hitZone.destroy(); } catch (er) {}
+        }
+      } catch (err) {}
+      try { if (e.obj && typeof e.obj.off === 'function') { e.obj.off && e.obj.off('pointerdown'); e.obj.off && e.obj.off('pointerover'); e.obj.off && e.obj.off('pointerout'); } } catch (err) {}
+      try { if (e._selGraphic && typeof e._selGraphic.destroy === 'function') e._selGraphic.destroy(); } catch (err) {}
       try { if (e.obj && typeof e.obj.destroy === 'function') e.obj.destroy(); } catch (err) {}
       // do not remove textures — Phaser may share textures; leave to global cache
     }
     this._objects = [];
+  }
+
+  _onSelectionChanged(payload) {
+    try {
+      // Decide which entry to highlight: prefer id/instance_key match if payload has id or instance_key, else match by world coords
+      let selectedKey = null;
+      if (payload && payload.kind === 'object' && (payload.id != null || payload.instance_key != null)) {
+        for (const it of this._objects) {
+          try {
+            const mid = it && it.meta && (it.meta.id ?? null);
+            const mk = it && it.meta && (it.meta.object_key ?? null);
+            if ((payload.id != null && mid != null && payload.id === mid) || (payload.instance_key != null && mk != null && payload.instance_key === mk)) {
+              selectedKey = (mid != null) ? `id:${mid}` : (`key:${mk}`);
+              break;
+            }
+          } catch (e) {}
+        }
+      }
+      if (!selectedKey && payload && payload.world) {
+        const wx = Number(payload.world.x || 0); const wy = Number(payload.world.y || 0);
+        for (const it of this._objects) {
+          try { if (Math.abs(Number(it.meta.x || 0) - wx) < 1 && Math.abs(Number(it.meta.y || 0) - wy) < 1) { selectedKey = `pos:${it.meta.x}:${it.meta.y}`; break; } } catch (e) {}
+        }
+      }
+
+      for (const it of this._objects) {
+        try {
+          const key = (it && it.meta && it.meta.id != null) ? `id:${it.meta.id}` : (it && it.meta && it.meta.object_key != null) ? `key:${it.meta.object_key}` : `pos:${it && it.meta && it.meta.x}:${it && it.meta && it.meta.y}`;
+          const should = (payload && payload.kind === 'object' && selectedKey && key === selectedKey);
+          this._setSelectedHighlight(it, should);
+        } catch (e) {}
+      }
+      if (payload && payload.kind === 'clear') {
+        for (const it of this._objects) this._setSelectedHighlight(it, false);
+      }
+    } catch (e) {}
+  }
+
+  _setSelectedHighlight(entry, enabled) {
+    try {
+      if (!entry) return;
+      if (!this._scene || !this._scene.add) return;
+      if (enabled) {
+        if (entry._selGraphic) return;
+        try {
+          const g = this._scene.add.graphics();
+          try { if (typeof g.lineStyle === 'function') g.lineStyle(2, 0x00ff00, 0.95); } catch (e) {}
+          try { if (typeof g.strokeRect === 'function') g.strokeRect(Math.round((entry.meta.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5)), Math.round((entry.meta.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5)), Math.round(this.cellSize), Math.round(this.cellSize)); } catch (e) {}
+          try { if (typeof g.setDepth === 'function') g.setDepth(70); } catch (e) {}
+          entry._selGraphic = g;
+        } catch (e) {}
+      } else {
+        if (entry._selGraphic) {
+          try { if (typeof entry._selGraphic.destroy === 'function') entry._selGraphic.destroy(); } catch (e) {}
+          entry._selGraphic = null;
+        }
+      }
+    } catch (e) {}
   }
 
   destroy() {
