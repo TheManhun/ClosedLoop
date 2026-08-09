@@ -89,15 +89,49 @@ export default class UIManager {
 
       // Initialise selection inspector (small read-only panel) if available
       try {
-        // Lazy import to avoid circular dependencies in tests
-        // eslint-disable-next-line import/no-extraneous-dependencies
-        // dynamic require for Node tests
-        const SelectionInspector = typeof require === 'function' ? require('../ui/SelectionInspector.js').default : null;
-        if (SelectionInspector && this.eventBus) {
-          try {
-            this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
-            this._selectionInspector.initialise();
-          } catch (e) {}
+        if (typeof require === 'function') {
+          const SelectionInspector = require('../ui/SelectionInspector.js').default;
+          if (SelectionInspector && this.eventBus) {
+            try {
+              this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
+              this._selectionInspector.initialise();
+            } catch (e) {}
+          }
+        } else {
+          // Browser: dynamic import so UI panels mount at runtime
+          import('../ui/SelectionInspector.js').then((mod) => {
+            try {
+              const SelectionInspector = mod && mod.default;
+              if (SelectionInspector && this.eventBus) {
+                this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
+                this._selectionInspector.initialise();
+              }
+            } catch (e) {}
+          }).catch(() => {});
+        }
+      } catch (e) {}
+
+      // Initialise context panel (shows compatible machines) if available
+      try {
+        if (typeof require === 'function') {
+          const ContextPanel = require('../ui/ContextPanel.js').default;
+          if (ContextPanel && this.eventBus && this.statusProviders.technology) {
+            try {
+              this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
+              this._contextPanel.initialise();
+            } catch (e) {}
+          }
+        } else {
+          // Browser: dynamic import for runtime mount
+          import('../ui/ContextPanel.js').then((mod) => {
+            try {
+              const ContextPanel = mod && mod.default;
+              if (ContextPanel && this.eventBus && this.statusProviders.technology) {
+                this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
+                this._contextPanel.initialise();
+              }
+            } catch (e) {}
+          }).catch(() => {});
         }
       } catch (e) {}
 

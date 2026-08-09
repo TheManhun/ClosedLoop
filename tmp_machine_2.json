@@ -1,0 +1,1 @@
+{"id":2,"name":"Wastewater Treatment Plant","description":"Treats sewage and wastewater to recover clean water, biogas, nutrients and sludge-derived resources.","category":"Water Treatment","image":"sewerage.png","configurable":false,"power_required":null,"water_required":null,"footprint_x":5,"footprint_y":4,"resources":[],"links":[],"technologies":[]}
