@@ -14,8 +14,6 @@ export async function run() {
   // Bootstrap sequence (Stage 0) — no gameplay or simulation implementation here.
   const eventBus = new EventBus();
 
-  // Expose for in-page debugging and manual testing (no-op in environments without `window`).
-  try { if (typeof window !== 'undefined') window.__clv2_eventBus = eventBus; } catch (e) {}
 
   const api = new ApiCoordinator({ eventBus });
   const dataLoader = new DataLoader({ apiCoordinator: api });
