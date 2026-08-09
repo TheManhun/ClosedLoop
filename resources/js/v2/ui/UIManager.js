@@ -87,12 +87,27 @@ export default class UIManager {
       root.innerText = lines.join('\n');
     }
 
-    this.mounted = true;
+      // Initialise selection inspector (small read-only panel) if available
+      try {
+        // Lazy import to avoid circular dependencies in tests
+        // eslint-disable-next-line import/no-extraneous-dependencies
+        // dynamic require for Node tests
+        const SelectionInspector = typeof require === 'function' ? require('../ui/SelectionInspector.js').default : null;
+        if (SelectionInspector && this.eventBus) {
+          try {
+            this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
+            this._selectionInspector.initialise();
+          } catch (e) {}
+        }
+      } catch (e) {}
+
+      this.mounted = true;
   }
 
   destroy() {
     this.mounted = false;
     const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
     if (root) root.innerText = '';
+      try { if (this._selectionInspector && typeof this._selectionInspector.destroy === 'function') this._selectionInspector.destroy(); } catch (e) {}
   }
 }

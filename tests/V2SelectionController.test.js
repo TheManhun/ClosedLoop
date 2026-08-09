@@ -43,9 +43,9 @@ test('SelectionController: later pointerdown with same mouse pointer id clears w
   // simulate a later pointerdown with same pointer id but currentlyOver empty
   input.invoke('pointerdown', { id: 1, pointerId: 1, currentlyOver: [], x: 100, y: 200 });
 
-  // now expect a clear event to have been emitted
-  const sawClear = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'clear');
-  assert.ok(sawClear, 'expected selection to be cleared by later pointerdown with empty currentlyOver');
+  // now expect a ground selection event to have been emitted
+  const sawGround = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'ground');
+  assert.ok(sawGround, 'expected ground selection to be emitted by later pointerdown with empty currentlyOver');
 });
 
 test('SelectionController: harmless currentlyOver object should NOT block clearing (regression test)', async () => {
@@ -65,9 +65,9 @@ test('SelectionController: harmless currentlyOver object should NOT block cleari
   // harmless object: input null should be considered non-blocking
   input.invoke('pointerdown', { id: 5, pointerId: 5, currentlyOver: [{ input: null }], x: 400, y: 300 });
 
-  const sawClear = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'clear');
+  const sawGround2 = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'ground');
   // This is the expected behavior we want to enforce (test will fail if current impl blocks on any non-empty currentlyOver)
-  assert.ok(sawClear, 'expected harmless currentlyOver object NOT to block clearing (regression)');
+  assert.ok(sawGround2, 'expected harmless currentlyOver object NOT to block ground selection (regression)');
 });
 
 test('SelectionController: pointerdown over selectable hit zone must NOT clear', async () => {
@@ -86,8 +86,8 @@ test('SelectionController: pointerdown over selectable hit zone must NOT clear',
   // simulate currentlyOver containing a hit zone object marked as selection target
   input.invoke('pointerdown', { id: 9, pointerId: 9, currentlyOver: [{ _selectionTarget: true }], x: 10, y: 10 });
 
-  const sawClear = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'clear');
-  assert.ok(!sawClear, 'expected pointerdown over selectable hit zone NOT to clear selection');
+  const sawGround3 = bus.emits.some(e => e.k === 'selection:changed' && e.v && e.v.kind === 'ground');
+  assert.ok(!sawGround3, 'expected pointerdown over selectable hit zone NOT to produce ground selection');
 });
 
 test('SelectionController: same click cycle does not clear immediately (suppression)', async () => {
@@ -105,7 +105,7 @@ test('SelectionController: same click cycle does not clear immediately (suppress
   // Immediately invoke pointerdown with same id before timeout clears; currentlyOver empty
   input.invoke('pointerdown', { id: 42, pointerId: 42, currentlyOver: [], x: 0, y: 0 });
 
-  // Should NOT have emitted a clear during the same cycle
-  const recentClears = bus.emits.filter(e => e.k === 'selection:changed' && e.v && e.v.kind === 'clear');
-  assert.equal(recentClears.length, 0, 'expected no immediate clear during same click cycle');
+  // Should NOT have emitted a ground selection during the same cycle
+  const recentGrounds = bus.emits.filter(e => e.k === 'selection:changed' && e.v && e.v.kind === 'ground');
+  assert.equal(recentGrounds.length, 0, 'expected no immediate ground selection during same click cycle');
 });

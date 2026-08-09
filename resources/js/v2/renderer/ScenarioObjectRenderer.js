@@ -131,6 +131,8 @@ export default class ScenarioObjectRenderer {
       y: y,
     };
 
+    const selectable = (so && (typeof so.selectable !== 'undefined')) ? !!so.selectable : true;
+
     // create interactive hit zone so pointer events reliably target this object
     let hitZone = null;
     try {
@@ -139,8 +141,8 @@ export default class ScenarioObjectRenderer {
           hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
           if (hitZone && typeof hitZone.setInteractive === 'function') {
             hitZone.setInteractive();
-            try { hitZone._selectionTarget = true; } catch (e) {}
-            try { hitZone.on('pointerdown', (pointer) => {
+            try { if (selectable) hitZone._selectionTarget = true; } catch (e) {}
+            try { if (selectable) hitZone.on('pointerdown', (pointer) => {
               try {
                 if (this.eventBus && typeof this.eventBus.emit === 'function') {
                   const payload = { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
@@ -151,7 +153,7 @@ export default class ScenarioObjectRenderer {
           } else {
             // fallback: attach to visual if interactive
             if (go && typeof go.setInteractive === 'function') {
-              try { go.setInteractive(); go.on('pointerdown', (pointer) => {
+              try { go.setInteractive(); if (selectable) go.on('pointerdown', (pointer) => {
                 try { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); } catch (e) {}
               }); } catch (e) {}
             }
@@ -214,7 +216,7 @@ export default class ScenarioObjectRenderer {
           this._setSelectedHighlight(it, should);
         } catch (e) {}
       }
-      if (payload && payload.kind === 'clear') {
+      if (payload && (payload.kind === 'clear' || payload.kind === 'ground')) {
         for (const it of this._objects) this._setSelectedHighlight(it, false);
       }
     } catch (e) {}
@@ -228,8 +230,14 @@ export default class ScenarioObjectRenderer {
         if (entry._selGraphic) return;
         try {
           const g = this._scene.add.graphics();
-          try { if (typeof g.lineStyle === 'function') g.lineStyle(2, 0x00ff00, 0.95); } catch (e) {}
-          try { if (typeof g.strokeRect === 'function') g.strokeRect(Math.round((entry.meta.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5)), Math.round((entry.meta.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5)), Math.round(this.cellSize), Math.round(this.cellSize)); } catch (e) {}
+          try { if (typeof g.lineStyle === 'function') g.lineStyle(3, 0x00ff00, 0.95); } catch (e) {}
+          try {
+            const pad = Math.round(this.cellSize * 0.08);
+            const sx = Math.round((entry.meta.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5) - pad);
+            const sy = Math.round((entry.meta.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5) - pad);
+            const s = Math.round(this.cellSize + pad * 2);
+            if (typeof g.strokeRect === 'function') g.strokeRect(sx, sy, s, s);
+          } catch (e) {}
           try { if (typeof g.setDepth === 'function') g.setDepth(70); } catch (e) {}
           entry._selGraphic = g;
         } catch (e) {}

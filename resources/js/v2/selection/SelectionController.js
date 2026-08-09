@@ -71,10 +71,15 @@ export default class SelectionController {
       const pid = pointer && (pointer.id ?? pointer.pointerId ?? null);
       if (pid != null && this._lastPointerId != null && pid === this._lastPointerId) return;
 
-      // Clear selection
-      this._selected = null;
+      // Instead of clearing directly, emit a canonical ground selection request
+      // Reuse previously-derived pid
+      let wx = null, wy = null;
+      try { wx = typeof pointer.worldX !== 'undefined' ? pointer.worldX : (typeof pointer.x !== 'undefined' ? pointer.x : null); } catch (e) { wx = null; }
+      try { wy = typeof pointer.worldY !== 'undefined' ? pointer.worldY : (typeof pointer.y !== 'undefined' ? pointer.y : null); } catch (e) { wy = null; }
       if (this.eventBus && typeof this.eventBus.emit === 'function') {
-        this.eventBus.emit('selection:changed', { kind: 'clear', id: null, instance_key: null, meta: null, world: null });
+        try {
+          this.eventBus.emit('selection:request', { kind: 'ground', id: null, instance_key: null, meta: null, world: { x: wx, y: wy }, _pointerId: pid });
+        } catch (e) {}
       }
     } catch (e) {}
   }

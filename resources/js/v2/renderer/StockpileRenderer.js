@@ -210,6 +210,8 @@ export default class StockpileRenderer {
     // Hover handlers: attach interactive listeners if available, otherwise expose handlers for tests
     const hoverHandlers = { over: null, out: null };
 
+    const selectable = (sr && (typeof sr.selectable !== 'undefined')) ? !!sr.selectable : true;
+
     const createHoverCard = (srLocal, px, py) => {
       const name = (srLocal && (srLocal.display_name || (srLocal.resource && srLocal.resource.name))) || 'Resource';
       const category = (srLocal && srLocal.resource && srLocal.resource.category) || '';
@@ -320,15 +322,15 @@ export default class StockpileRenderer {
       if (this._scene && this._scene.add && typeof this._scene.add.zone === 'function') {
         try {
           hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
-          if (hitZone && typeof hitZone.setInteractive === 'function') {
+            if (hitZone && typeof hitZone.setInteractive === 'function') {
             hitZone.setInteractive();
-            try { hitZone._selectionTarget = true; } catch (e) {}
+            try { if (selectable) hitZone._selectionTarget = true; } catch (e) {}
             const overFn = makeOver(sr, x, y);
             const outFn = makeOut();
             try { hitZone.on('pointerover', overFn); } catch (e) {}
             try { hitZone.on('pointerout', outFn); } catch (e) {}
-            // pointerdown should emit a selection request
-            try { hitZone.on('pointerdown', (pointer) => {
+            // pointerdown should emit a selection request only if selectable
+            try { if (selectable) hitZone.on('pointerdown', (pointer) => {
               try {
                 if (this.eventBus && typeof this.eventBus.emit === 'function') {
                   const payload = { kind: 'resource', id: sr && (sr.id ?? null), instance_key: sr && (sr.instance_key ?? null), meta: sr, world: { x, y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
@@ -343,7 +345,7 @@ export default class StockpileRenderer {
             if (go && typeof go.setInteractive === 'function') {
               const overFn = makeOver(sr, x, y);
               const outFn = makeOut();
-              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); try { go.on('pointerdown', (pointer) => {
+              try { go.setInteractive(); go.on('pointerover', overFn); go.on('pointerout', outFn); try { if (selectable) go.on('pointerdown', (pointer) => {
                 if (this.eventBus && typeof this.eventBus.emit === 'function') {
                   const payload = { kind: 'resource', id: sr && (sr.id ?? null), instance_key: sr && (sr.instance_key ?? null), meta: sr, world: { x, y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
                   this.eventBus.emit('selection:request', payload);
@@ -431,8 +433,8 @@ export default class StockpileRenderer {
         const should = (payload && payload.kind === 'resource' && selectedKey && key === selectedKey);
         this._setSelectedHighlight(it, should);
       }
-      // if clear, remove all
-      if (payload && payload.kind === 'clear') {
+      // if clear or ground, remove all
+      if (payload && (payload.kind === 'clear' || payload.kind === 'ground')) {
         for (const it of this._stockpiles) this._setSelectedHighlight(it, false);
       }
     } catch (e) {}
@@ -446,8 +448,14 @@ export default class StockpileRenderer {
         if (entry._selGraphic) return; // already highlighted
         try {
           const g = this._scene.add.graphics();
-          try { if (typeof g.lineStyle === 'function') g.lineStyle(2, 0xffff00, 0.95); } catch (e) {}
-          try { if (typeof g.strokeRect === 'function') g.strokeRect(Math.round((entry.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5)), Math.round((entry.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5)), Math.round(this.cellSize), Math.round(this.cellSize)); } catch (e) {}
+          try { if (typeof g.lineStyle === 'function') g.lineStyle(3, 0xffff00, 0.95); } catch (e) {}
+          try {
+            const pad = Math.round(this.cellSize * 0.08);
+            const sx = Math.round((entry.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5) - pad);
+            const sy = Math.round((entry.y || (entry.obj && entry.obj.y) || 0) - (this.cellSize * 0.5) - pad);
+            const s = Math.round(this.cellSize + pad * 2);
+            if (typeof g.strokeRect === 'function') g.strokeRect(sx, sy, s, s);
+          } catch (e) {}
           try { if (typeof g.setDepth === 'function') g.setDepth(70); } catch (e) {}
           entry._selGraphic = g;
         } catch (e) {}
