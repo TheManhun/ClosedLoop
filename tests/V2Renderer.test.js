@@ -36,3 +36,41 @@ test('App initialises renderer, ui and game in order and destroys in reverse', (
   assert(gi >= 0 && uii >= 0 && ri >= 0);
   assert(gi < uii && uii < ri);
 });
+
+test('Renderer bootstrap initialises placement controller with the live scene and input controller exactly once', () => {
+  const bus = { on: () => {}, off: () => {}, emit: () => {} };
+  const renderer = new Renderer({ eventBus: bus, mountId: 'closed-loop-v2-canvas' });
+  const scene = { input: { on: () => {}, off: () => {} } };
+  const input = { initialise: () => {} };
+
+  let initCalls = 0;
+  let seenScene = null;
+  let seenInput = null;
+  let isInitialisedState = false;
+
+  renderer._placementController = {
+    initialise: (sceneArg, inputArg) => {
+      initCalls += 1;
+      seenScene = sceneArg;
+      seenInput = inputArg;
+      isInitialisedState = true;
+    },
+    destroy: () => {
+      isInitialisedState = false;
+    },
+    isInitialised: () => !!isInitialisedState,
+  };
+
+  renderer._initialisePlacementController(scene, input);
+  renderer._initialisePlacementController(scene, input);
+
+  assert.equal(initCalls, 1);
+  assert.equal(seenScene, scene);
+  assert.equal(seenInput, input);
+  assert.equal(typeof renderer._placementController.destroy === 'function', true);
+
+  const placementController = renderer._placementController;
+  renderer.destroy();
+  assert.equal(renderer._placementController, null);
+  assert.equal(typeof placementController.destroy === 'function', true);
+});

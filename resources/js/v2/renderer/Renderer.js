@@ -6,6 +6,7 @@ import StockpileRenderer from './StockpileRenderer.js';
 import ScenarioObjectRenderer from './ScenarioObjectRenderer.js';
 import ScenarioMapRenderer from './ScenarioMapRenderer.js';
 import SelectionController from '../selection/SelectionController.js';
+import PlacementController from '../placement/PlacementController.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -14,6 +15,14 @@ export default class Renderer {
     this.initialised = false;
     this._game = null;
     this._gridRenderer = null;
+    this._placementController = new PlacementController({ eventBus, cellSize: 64 });
+  }
+
+  _initialisePlacementController(scene, inputController) {
+    const placementController = this._placementController;
+    if (!placementController || typeof placementController.initialise !== 'function') return;
+    if (typeof placementController.isInitialised === 'function' && placementController.isInitialised()) return;
+    placementController.initialise(scene, inputController);
   }
 
   initialise() {
@@ -45,15 +54,16 @@ export default class Renderer {
       const camera = this._camera;
       const gridRenderer = this._gridRenderer;
       const inputController = this._inputController;
+      const placementController = this._placementController;
 
-        const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
-        this._stockpileRenderer = stockpileRenderer;
-        const selectionController = new SelectionController({ eventBus: this.eventBus });
-        this._selectionController = selectionController;
-        const scenarioObjectRenderer = new ScenarioObjectRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
-        this._scenarioObjectRenderer = scenarioObjectRenderer;
-        const scenarioMapRenderer = new ScenarioMapRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
-        this._scenarioMapRenderer = scenarioMapRenderer;
+      const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+      this._stockpileRenderer = stockpileRenderer;
+      const selectionController = new SelectionController({ eventBus: this.eventBus });
+      this._selectionController = selectionController;
+      const scenarioObjectRenderer = new ScenarioObjectRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+      this._scenarioObjectRenderer = scenarioObjectRenderer;
+      const scenarioMapRenderer = new ScenarioMapRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
+      this._scenarioMapRenderer = scenarioMapRenderer;
       // production: do not expose internals to window
 
       // Create a minimal blank scene that initialises the grid during its create() phase.
@@ -93,6 +103,9 @@ export default class Renderer {
           }
           if (typeof inputController !== 'undefined' && inputController && typeof inputController.initialise === 'function') {
             inputController.initialise(this);
+          }
+          if (placementController && typeof placementController.initialise === 'function') {
+            try { placementController.initialise(this, inputController); } catch (e) { /* ignore */ }
           }
         }
         update() {}
@@ -145,6 +158,11 @@ export default class Renderer {
     if (this._inputController) {
       try { this._inputController.destroy(); } catch (e) { /* ignore */ }
       this._inputController = null;
+    }
+
+    if (this._placementController) {
+      try { this._placementController.destroy(); } catch (e) { /* ignore */ }
+      this._placementController = null;
     }
 
     // Destroy stockpile renderer if present
