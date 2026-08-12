@@ -6,6 +6,9 @@ export default class ContextPanel {
     this._mounted = false;
     this._bound = {};
     this.mountId = 'closed-loop-v2-ui';
+    this._currentResource = null;
+    this._view = 'recommended';
+    this._selectedMachineId = null;
   }
 
   initialise() {
@@ -42,29 +45,137 @@ export default class ContextPanel {
     this._mounted = true;
   }
 
-  _renderNoMatches() {
-    if (!this._el) return;
-      this._el.innerText = '';
-      const headingText = 'Compatible Technologies';
-      const bodyText = 'No compatible technologies defined yet.';
-      // Populate DOM nodes for real browsers
-      const h = document.createElement('div');
-      h.style.fontWeight = '600';
-      h.style.marginBottom = '6px';
-      h.innerText = headingText;
-      const b = document.createElement('div');
-      b.style.marginTop = '6px';
-      b.innerText = bodyText;
-      this._el.appendChild(h);
-      this._el.appendChild(b);
-      // Also set textContent for Node DOM shim tests
-      try { this._el.textContent = `${headingText}\n${bodyText}`; } catch (e) {}
-      this._el.style.display = 'block';
+  _getMachineImage(machine) {
+    const src = machine && (machine.image || machine.image_url || machine.icon || null);
+    if (!src || typeof src !== 'string' || src.trim() === '') return null;
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = machine.name || 'Machine';
+    img.style.width = '28px';
+    img.style.height = '28px';
+    img.style.objectFit = 'cover';
+    img.style.borderRadius = '4px';
+    img.style.flexShrink = '0';
+    return img;
   }
 
-  _renderMachineList(resourceMeta, machines) {
+  _getResourceId(resourceMeta) {
+    const resource = (resourceMeta && (resourceMeta.resource || resourceMeta.resource_canonical)) || {};
+    return resourceMeta && (resourceMeta.resource_id ?? resource.id ?? null) != null ? (resourceMeta.resource_id ?? resource.id ?? null) : null;
+  }
+
+  _getCompatibleMachines(resourceId) {
+    if (this.technology && typeof this.technology.getCompatibleMachinesForResource === 'function') {
+      return this.technology.getCompatibleMachinesForResource(resourceId || null) || [];
+    }
+    return [];
+  }
+
+  _getAllMachines() {
+    try {
+      if (this.technology && this.technology.dataLoader && typeof this.technology.dataLoader.getMachines === 'function') {
+        return this.technology.dataLoader.getMachines() || [];
+      }
+      if (this.technology && typeof this.technology.getMachines === 'function') {
+        return this.technology.getMachines() || [];
+      }
+    } catch (e) {}
+    return [];
+  }
+
+  _makeActionButton(label, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerText = label;
+    btn.style.marginTop = '8px';
+    btn.style.padding = '6px 8px';
+    btn.style.border = '1px solid rgba(255,255,255,0.2)';
+    btn.style.borderRadius = '6px';
+    btn.style.background = 'rgba(255,255,255,0.04)';
+    btn.style.color = '#e6eef8';
+    btn.style.cursor = 'pointer';
+    btn.onclick = (event) => {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      onClick();
+    };
+    return btn;
+  }
+
+  _createBoundedCatalogue(list) {
+    const container = document.createElement('div');
+    container.className = 'v2-context-catalogue';
+    container.style.maxHeight = 'min(420px, calc(100vh - 220px))';
+    container.style.overflowY = 'auto';
+    container.style.overflowX = 'hidden';
+    container.style.marginTop = '8px';
+    container.style.paddingRight = '4px';
+    container.style.borderTop = '1px solid rgba(255,255,255,0.08)';
+    container.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+    container.style.scrollbarWidth = 'thin';
+    container.style.msOverflowStyle = 'auto';
+    container.appendChild(list);
+    return container;
+  }
+
+  _renderMachineCard(machine, selected = false) {
+    const card = document.createElement('div');
+    card.className = 'v2-context-machine-card';
+    card.style.padding = '8px';
+    card.style.borderRadius = '6px';
+    card.style.background = selected ? 'rgba(125, 211, 252, 0.12)' : 'rgba(255,255,255,0.04)';
+    card.style.border = selected ? '1px solid rgba(125, 211, 252, 0.7)' : '1px solid transparent';
+    card.style.display = 'flex';
+    card.style.gap = '8px';
+    card.style.alignItems = 'center';
+    card.style.justifyContent = 'space-between';
+
+    const left = document.createElement('div');
+    left.style.display = 'flex';
+    left.style.gap = '8px';
+    left.style.alignItems = 'center';
+    left.style.flex = '1';
+
+    const img = this._getMachineImage(machine);
+    if (img) left.appendChild(img);
+
+    const meta = document.createElement('div');
+    meta.style.display = 'flex';
+    meta.style.flexDirection = 'column';
+    meta.style.gap = '2px';
+    const name = document.createElement('div');
+    name.style.fontWeight = '600';
+    name.innerText = machine && machine.name ? machine.name : `Machine ${machine && machine.id ? machine.id : ''}`;
+    const cat = document.createElement('div');
+    cat.style.fontSize = '12px';
+    cat.style.opacity = '0.85';
+    cat.innerText = machine && machine.category ? machine.category : 'Uncategorised';
+    meta.appendChild(name);
+    meta.appendChild(cat);
+    left.appendChild(meta);
+
+    const button = this._makeActionButton(selected ? 'Selected' : 'Select', () => {
+      const selectedMachine = machine || null;
+      this._selectedMachineId = selectedMachine && (selectedMachine.id ?? selectedMachine.machine_id ?? null);
+      if (this.eventBus && typeof this.eventBus.emit === 'function') {
+        this.eventBus.emit('technology:selected', {
+          machine: selectedMachine,
+          resource: this._currentResource || null,
+          mode: this._view,
+        });
+      }
+      this._renderCurrent();
+    });
+    button.style.flexShrink = '0';
+
+    card.appendChild(left);
+    card.appendChild(button);
+    return card;
+  }
+
+  _renderMachineList(resourceMeta, recommendedMachines = [], allMachines = []) {
     if (!this._el) return;
     this._el.innerText = '';
+
     const title = document.createElement('div');
     title.style.fontWeight = '700';
     title.style.marginBottom = '6px';
@@ -78,53 +189,139 @@ export default class ContextPanel {
       qty.innerText = `Quantity: ${q} ${resourceMeta.unit || ''}`;
     }
 
-    const heading = document.createElement('div');
-    heading.style.fontWeight = '600';
-    heading.style.marginTop = '8px';
-    heading.style.marginBottom = '6px';
-    heading.innerText = 'Compatible Technologies';
+    const recommendationsHeading = document.createElement('div');
+    recommendationsHeading.style.fontWeight = '600';
+    recommendationsHeading.style.marginTop = '10px';
+    recommendationsHeading.style.marginBottom = '6px';
+    recommendationsHeading.innerText = 'RECOMMENDED TECHNOLOGIES';
+
+    const recommendedList = document.createElement('div');
+    recommendedList.style.display = 'flex';
+    recommendedList.style.flexDirection = 'column';
+    recommendedList.style.gap = '8px';
+
+    for (const machine of recommendedMachines) {
+      const selected = Number(this._selectedMachineId) === Number(machine && (machine.id ?? machine.machine_id ?? null));
+      recommendedList.appendChild(this._renderMachineCard(machine, selected));
+    }
+
+    const toggleButton = this._makeActionButton(this._view === 'all' ? 'Hide All Technologies ▲' : 'Show All Technologies ▼', () => {
+      this._view = this._view === 'all' ? 'recommended' : 'all';
+      this._renderCurrent();
+    });
+    toggleButton.style.marginTop = '10px';
+    toggleButton.style.marginBottom = '10px';
 
     this._el.appendChild(title);
     if (qty.innerText) this._el.appendChild(qty);
-    this._el.appendChild(heading);
+    this._el.appendChild(recommendationsHeading);
+    this._el.appendChild(recommendedList);
+    this._el.appendChild(toggleButton);
 
-    const list = document.createElement('div');
-    list.style.display = 'flex';
-    list.style.flexDirection = 'column';
-    list.style.gap = '8px';
+    if (this._view === 'all') {
+      const divider = document.createElement('div');
+      divider.style.borderTop = '1px solid rgba(255,255,255,0.12)';
+      divider.style.margin = '12px 0 8px';
+      divider.style.paddingTop = '8px';
 
-    for (const m of machines) {
-      const card = document.createElement('div');
-      card.className = 'v2-context-machine-card';
-      card.style.padding = '8px';
-      card.style.borderRadius = '6px';
-      card.style.background = 'rgba(255,255,255,0.04)';
-      card.style.display = 'flex';
-      card.style.flexDirection = 'column';
+      const allHeading = document.createElement('div');
+      allHeading.style.fontWeight = '600';
+      allHeading.style.marginBottom = '6px';
+      allHeading.innerText = 'ALL TECHNOLOGIES';
 
-      const name = document.createElement('div');
-      name.style.fontWeight = '600';
-      name.innerText = m.name || `Machine ${m.id || ''}`;
-      const cat = document.createElement('div');
-      cat.style.fontSize = '12px';
-      cat.style.opacity = '0.9';
-      if (m.category) cat.innerText = m.category;
+      const allList = document.createElement('div');
+      allList.style.display = 'flex';
+      allList.style.flexDirection = 'column';
+      allList.style.gap = '8px';
 
-      card.appendChild(name);
-      if (cat.innerText) card.appendChild(cat);
-      list.appendChild(card);
+      for (const machine of allMachines) {
+        const selected = Number(this._selectedMachineId) === Number(machine && (machine.id ?? machine.machine_id ?? null));
+        allList.appendChild(this._renderMachineCard(machine, selected));
+      }
+
+      this._el.appendChild(divider);
+      this._el.appendChild(allHeading);
+      this._el.appendChild(this._createBoundedCatalogue(allList));
     }
 
-    this._el.appendChild(list);
-      // Set textContent for Node DOM shim so tests can assert on textual output
-      try {
-        const machineLines = machines.map(m => `${m.name || `Machine ${m.id || ''}`} ${m.category ? `- ${m.category}` : ''}`);
-        const qtyLine = (resourceMeta.current_quantity ?? resourceMeta.initial_quantity) ? `Quantity: ${(resourceMeta.current_quantity ?? resourceMeta.initial_quantity)} ${resourceMeta.unit || ''}` : '';
-        const headingText = 'Compatible Technologies';
-        const titleText = resourceMeta.display_name || (resourceMeta.resource && resourceMeta.resource.name) || 'Resource';
-        this._el.textContent = [titleText, qtyLine, headingText, ...machineLines].filter(Boolean).join('\n');
-      } catch (e) {}
-      this._el.style.display = 'block';
+    this._el.style.display = 'block';
+  }
+
+  _renderNoMatches() {
+    if (!this._el) return;
+    this._el.innerText = '';
+
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.style.marginBottom = '6px';
+    title.innerText = (this._currentResource && (this._currentResource.display_name || (this._currentResource.resource && this._currentResource.resource.name))) || 'Resource';
+
+    const heading = document.createElement('div');
+    heading.style.fontWeight = '600';
+    heading.style.marginTop = '10px';
+    heading.style.marginBottom = '6px';
+    heading.innerText = 'RECOMMENDED TECHNOLOGIES';
+
+    const body = document.createElement('div');
+    body.style.marginTop = '6px';
+    body.innerText = 'No compatible technologies defined yet.';
+
+    const allMachines = this._getAllMachines();
+    const toggleLabel = this._view === 'all' ? 'Hide All Technologies ▲' : 'Show All Technologies ▼';
+    const toggleButton = this._makeActionButton(toggleLabel, () => {
+      this._view = this._view === 'all' ? 'recommended' : 'all';
+      this._renderCurrent();
+    });
+    toggleButton.style.marginTop = '10px';
+    toggleButton.style.marginBottom = '10px';
+
+    this._el.appendChild(title);
+    this._el.appendChild(heading);
+    this._el.appendChild(body);
+    this._el.appendChild(toggleButton);
+
+    if (this._view === 'all' && allMachines.length > 0) {
+      const divider = document.createElement('div');
+      divider.style.borderTop = '1px solid rgba(255,255,255,0.12)';
+      divider.style.margin = '12px 0 8px';
+
+      const allHeading = document.createElement('div');
+      allHeading.style.fontWeight = '600';
+      allHeading.style.marginBottom = '6px';
+      allHeading.innerText = 'ALL TECHNOLOGIES';
+
+      const allList = document.createElement('div');
+      allList.style.display = 'flex';
+      allList.style.flexDirection = 'column';
+      allList.style.gap = '8px';
+      for (const machine of allMachines) {
+        allList.appendChild(this._renderMachineCard(machine, false));
+      }
+
+      this._el.appendChild(divider);
+      this._el.appendChild(allHeading);
+      this._el.appendChild(this._createBoundedCatalogue(allList));
+    }
+
+    this._el.style.display = 'block';
+  }
+
+  _renderCurrent() {
+    if (!this._el || !this._currentResource) {
+      this._el && (this._el.style.display = 'none');
+      return;
+    }
+
+    const resourceId = this._getResourceId(this._currentResource);
+    const compatibleMachines = this._getCompatibleMachines(resourceId);
+    const allMachines = this._getAllMachines();
+
+    if (!compatibleMachines || compatibleMachines.length === 0) {
+      this._renderNoMatches();
+      return;
+    }
+
+    this._renderMachineList(this._currentResource, compatibleMachines, allMachines);
   }
 
   _onSelectionChanged(payload) {
@@ -137,37 +334,16 @@ export default class ContextPanel {
       }
 
       if (payload.kind === 'resource') {
-        const meta = payload.meta || {};
-        const resource = (meta.resource || meta.resource_canonical) || {};
-        const resourceId = meta.resource_id || resource.id || null;
-        let machines = [];
-        try {
-          if (this.technology && typeof this.technology.getCompatibleMachinesForResource === 'function') {
-            machines = this.technology.getCompatibleMachinesForResource(resourceId || null) || [];
-          }
-        } catch (e) {
-          machines = [];
-        }
-
-        if (!machines || machines.length === 0) {
-          // still show resource heading
-          this._el.innerText = '';
-          const title = document.createElement('div');
-          title.style.fontWeight = '700';
-          title.style.marginBottom = '6px';
-          title.innerText = meta.display_name || resource.name || 'Resource';
-          this._el.appendChild(title);
-          this._renderNoMatches();
-          return;
-        }
-
-        this._renderMachineList(meta, machines);
+        this._currentResource = payload.meta || {};
+        this._selectedMachineId = null;
+        this._view = 'recommended';
+        this._renderCurrent();
         return;
       }
 
-      // hide for other kinds
       this._el.style.display = 'none';
       this._el.innerText = '';
+      this._currentResource = null;
     } catch (e) {
       // noop
     }
@@ -182,5 +358,8 @@ export default class ContextPanel {
     try { if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el); } catch (e) {}
     this._el = null;
     this._mounted = false;
+    this._currentResource = null;
+    this._view = 'recommended';
+    this._selectedMachineId = null;
   }
 }
