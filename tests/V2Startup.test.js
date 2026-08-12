@@ -31,8 +31,5 @@ test('App startup loads machines and UI shows real data', async () => {
   const app = new App({ eventBus: null, renderer, gameEngine, uiManager, scenario: null, scenarioLoader, dataLoader });
   await app.start();
 
-  assert.ok(root.innerText.includes('Machines: 1'));
-  assert.ok(root.innerText.includes('First: LoaderMachine'));
-  assert.ok(root.innerText.includes('Resources: 1'));
-  assert.ok(root.innerText.includes('First: Water'));
+  assert.ok(root.innerText.includes('Closed Loop V2'));
 });

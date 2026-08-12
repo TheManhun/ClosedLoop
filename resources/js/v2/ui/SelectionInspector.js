@@ -15,9 +15,8 @@ export default class SelectionInspector {
 
     const el = document.createElement('div');
     el.className = 'v2-selection-inspector';
-    // modest inline styles so consumers don't need CSS edits
+    // overlay panel anchored to the simulator UI; does not affect layout
     el.style.position = 'relative';
-    el.style.marginTop = '8px';
     el.style.padding = '10px';
     el.style.width = '280px';
     el.style.background = 'rgba(6,8,12,0.76)';
@@ -28,6 +27,8 @@ export default class SelectionInspector {
     el.style.boxSizing = 'border-box';
     el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.6)';
     el.style.display = 'none';
+    el.style.pointerEvents = 'auto';
+    el.style.zIndex = '21';
     el.setAttribute('aria-live', 'polite');
 
     root.appendChild(el);
@@ -69,9 +70,11 @@ export default class SelectionInspector {
         if (type) lines.push(`Type: ${type}`);
       } else if (payload.kind === 'object') {
         const meta = payload.meta || {};
-        const name = meta.name || meta.object_key || `Object ${payload.id ?? ''}`;
+        const displayName = meta.name || meta.display_name || meta.object_type || meta.object_key || `Object ${payload.id ?? ''}`;
+        const instanceKey = meta.object_key || meta.instance_key || null;
         const otype = meta.object_type || meta.object_category || '';
-        lines.push(name);
+        lines.push(displayName);
+        if (instanceKey && instanceKey !== displayName) lines.push(`Instance: ${instanceKey}`);
         if (otype) lines.push(`Type: ${otype}`);
         lines.push(`fixed: ${meta.fixed ? 'true' : 'false'}`);
         lines.push(`selectable: ${meta.selectable ? 'true' : 'false'}`);

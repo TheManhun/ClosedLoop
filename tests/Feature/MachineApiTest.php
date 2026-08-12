@@ -51,6 +51,23 @@ test('GET /api/machines/{id} returns machine shape with resources and links arra
     $this->assertEquals(100, $outputTotal, 'output total should equal 100');
 });
 
+test('GET /api/machines includes normalized resources for machine 3 with resource 14 input', function () {
+    $response = $this->get('/api/machines');
+    $response->assertStatus(200);
+    $machines = $response->json();
+    $this->assertIsArray($machines);
+
+    $machine3 = collect($machines)->firstWhere('id', 3);
+    $this->assertNotNull($machine3, 'machine 3 should exist in /api/machines');
+    $this->assertArrayHasKey('resources', $machine3);
+    $this->assertIsArray($machine3['resources']);
+
+    $resource14 = collect($machine3['resources'])->firstWhere('id', 14);
+    $this->assertNotNull($resource14, 'machine 3 should include resource 14 in resources');
+    $this->assertSame('input', strtolower((string) ($resource14['direction'] ?? '')));
+    $this->assertSame(14, (int) ($resource14['id'] ?? 0));
+});
+
 test('GET /api/machines/{id} returns 404 for missing machine', function () {
     // use a very large id that is unlikely to exist
     $response = $this->get('/api/machines/999999');

@@ -17,7 +17,6 @@ export default class ContextPanel {
     const el = document.createElement('div');
     el.className = 'v2-context-panel';
     el.style.position = 'relative';
-    el.style.marginTop = '8px';
     el.style.padding = '10px';
     el.style.width = '320px';
     el.style.background = 'rgba(10,12,16,0.85)';
@@ -28,6 +27,8 @@ export default class ContextPanel {
     el.style.boxSizing = 'border-box';
     el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.6)';
     el.style.display = 'none';
+    el.style.pointerEvents = 'auto';
+    el.style.zIndex = '22';
     el.setAttribute('aria-live', 'polite');
 
     root.appendChild(el);

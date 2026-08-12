@@ -6,99 +6,112 @@ export default class UIManager {
     // statusProviders: { eventBus, api, dataLoader, technology, simulation, game, scenarioLoader }
     this.statusProviders = statusProviders || {};
     this.mounted = false;
+    this._initialised = false;
+    this._currentScenario = null;
+    this._bound = {};
+    this._statusEl = null;
   }
 
-  initialise() {
-    // Minimal Stage 0 UI: render simple textual status block if root exists.
-    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
-    if (root) {
-      const lines = [];
-      lines.push('Closed Loop V2');
-      lines.push('Stage 0 — Architecture Booted');
+  _getOrCreateStatusBlock(root) {
+    if (!root) return null;
 
-      const mapStatus = (name, obj) => (obj ? 'OK' : 'Not available');
-
-      lines.push(`EventBus: ${mapStatus('eventBus', this.statusProviders.eventBus)}`);
-      lines.push(`ApiCoordinator: ${mapStatus('api', this.statusProviders.api)}`);
-      lines.push(`DataLoader: ${mapStatus('dataLoader', this.statusProviders.dataLoader)}`);
-      lines.push(`TechnologyEngine: ${mapStatus('technology', this.statusProviders.technology)}`);
-      lines.push(`SimulationEngine: ${mapStatus('simulation', this.statusProviders.simulation)}`);
-      lines.push(`GameEngine: ${mapStatus('game', this.statusProviders.game)}`);
-      lines.push(`UIManager: ${mapStatus('ui', this)}`);
-      lines.push(`ScenarioLoader: ${mapStatus('scenarioLoader', this.statusProviders.scenarioLoader)}`);
-      // Scenario loaded status
-      lines.push('Scenario: Not loaded');
-
-      // If DataLoader has machines loaded, show a minimal summary for visual verification.
-      try {
-        const dl = this.statusProviders.dataLoader;
-        const loadErr = this.statusProviders.machineLoadError || null;
-        if (loadErr) {
-          lines.push(`Machines: load failed: ${loadErr}`);
-        } else if (dl && typeof dl.getMachines === 'function') {
-          const machines = dl.getMachines();
-          if (Array.isArray(machines) && machines.length > 0) {
-            lines.push(`Machines: ${machines.length} — First: ${machines[0].name || '<unnamed>'}`);
-          } else {
-            lines.push('Machines: 0');
-          }
-        }
-        // Resources summary
-        const resourceErr = this.statusProviders.resourceLoadError || null;
-        if (resourceErr) {
-          lines.push(`Resources: load failed: ${resourceErr}`);
-        } else if (dl && typeof dl.getResources === 'function') {
-          const resources = dl.getResources();
-          if (Array.isArray(resources) && resources.length > 0) {
-            lines.push(`Resources: ${resources.length} — First: ${resources[0].name || '<unnamed>'}`);
-          } else {
-            lines.push('Resources: 0');
-          }
-        }
-        // Scenario summary
-        try {
-          const scenarioErr = this.statusProviders.scenarioLoadError || null;
-          if (scenarioErr) {
-            lines.push(`Scenario load: failed: ${scenarioErr}`);
-          } else if (dl && typeof dl.getScenarioById === 'function') {
-            const scenario = dl.getScenarioById(2);
-            if (scenario) {
-              lines.push(`Scenario: ${scenario.name || '<unnamed>'}`);
-              if (scenario.population) lines.push(`Population: ${Number(scenario.population).toLocaleString()}`);
-              if (Array.isArray(scenario.scenario_resources)) {
-                lines.push(`Scenario resources: ${scenario.scenario_resources.length}`);
-                // list resource names and quantities (first 6)
-                const items = scenario.scenario_resources.slice(0, 6).map((sr) => {
-                  const name = (sr.resource && sr.resource.name) || (sr.resource && sr.resource.name) || sr.display_name || '<unknown>';
-                  const qty = sr.current_quantity ?? sr.initial_quantity ?? '';
-                  return qty ? `${name}: ${qty}` : name;
-                });
-                if (items.length > 0) lines.push(...items);
-              }
-            }
-          }
-        } catch (e) {
-          // ignore UI rendering errors
-        }
-      } catch (e) {
-        // ignore UI rendering errors
+    if (root.querySelector && typeof root.querySelector === 'function') {
+      const existing = root.querySelector('.v2-status-block');
+      if (existing) {
+        this._statusEl = existing;
+        return existing;
       }
 
-      root.innerText = lines.join('\n');
+      const block = document.createElement('div');
+      block.className = 'v2-status-block';
+      block.setAttribute('aria-live', 'polite');
+      block.style.position = 'relative';
+      block.style.width = 'min(320px, 100%)';
+      block.style.padding = '8px 10px';
+      block.style.background = 'rgba(9, 12, 18, 0.75)';
+      block.style.color = '#dfeaf7';
+      block.style.borderRadius = '8px';
+      block.style.boxSizing = 'border-box';
+      block.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
+      block.style.pointerEvents = 'none';
+      block.style.zIndex = '21';
+      root.appendChild(block);
+      this._statusEl = block;
+      return block;
     }
 
-      // Initialise selection inspector (small read-only panel) if available
-      try {
-        if (typeof require === 'function') {
-          const SelectionInspector = require('../ui/SelectionInspector.js').default;
-          if (SelectionInspector && this.eventBus) {
-            try {
-              this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
-              this._selectionInspector.initialise();
-            } catch (e) {}
-          }
-        } else {
-          // Browser: dynamic import so UI panels mount at runtime
+    if (!this._statusEl) {
+      this._statusEl = { className: 'v2-status-block', innerText: '' };
+    }
+    return this._statusEl;
+  }
+
+  _renderStatus() {
+    const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
+    if (!root) return;
+
+    const statusEl = this._getOrCreateStatusBlock(root);
+    if (!statusEl) return;
+
+    const dl = this.statusProviders.dataLoader;
+    const currentScenario = this._currentScenario || (dl && typeof dl.getScenarioById === 'function' ? dl.getScenarioById(2) : null);
+
+    const lines = [];
+    if (currentScenario && currentScenario.name) {
+      lines.push(currentScenario.name);
+    } else {
+      lines.push('Closed Loop V2');
+    }
+
+    if (currentScenario && currentScenario.population != null) {
+      lines.push(`Population: ${Number(currentScenario.population).toLocaleString()}`);
+    }
+
+    if (Array.isArray(currentScenario && currentScenario.scenario_resources)) {
+      lines.push(`${currentScenario.scenario_resources.length} regional resource streams`);
+    }
+
+    const text = lines.join('\n');
+    if ('textContent' in statusEl) statusEl.textContent = text;
+    if ('innerText' in statusEl) statusEl.innerText = text;
+
+    // Backward compatibility for legacy plain-object test roots.
+    if (!root.querySelector && typeof root === 'object') {
+      root.innerText = text;
+    }
+  }
+
+  _onScenarioLoaded = (scenario) => {
+    this._currentScenario = scenario || null;
+    this._renderStatus();
+  };
+
+  initialise() {
+    if (this._initialised) return;
+    this._initialised = true;
+
+    if (this.eventBus && typeof this.eventBus.on === 'function') {
+      if (!this._bound.onScenarioLoaded) {
+        this._bound.onScenarioLoaded = this._onScenarioLoaded;
+        this.eventBus.on('scenario:loaded', this._bound.onScenarioLoaded);
+      }
+    }
+
+    this._renderStatus();
+
+    // Initialise selection inspector (small read-only panel) if available
+    try {
+      if (typeof require === 'function') {
+        const SelectionInspector = require('../ui/SelectionInspector.js').default;
+        if (SelectionInspector && this.eventBus && !this._selectionInspector) {
+          try {
+            this._selectionInspector = new SelectionInspector({ eventBus: this.eventBus });
+            this._selectionInspector.initialise();
+          } catch (e) {}
+        }
+      } else {
+        // Browser: dynamic import so UI panels mount at runtime
+        if (!this._selectionInspector) {
           import('../ui/SelectionInspector.js').then((mod) => {
             try {
               const SelectionInspector = mod && mod.default;
@@ -109,20 +122,22 @@ export default class UIManager {
             } catch (e) {}
           }).catch(() => {});
         }
-      } catch (e) {}
+      }
+    } catch (e) {}
 
-      // Initialise context panel (shows compatible machines) if available
-      try {
-        if (typeof require === 'function') {
-          const ContextPanel = require('../ui/ContextPanel.js').default;
-          if (ContextPanel && this.eventBus && this.statusProviders.technology) {
-            try {
-              this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
-              this._contextPanel.initialise();
-            } catch (e) {}
-          }
-        } else {
-          // Browser: dynamic import for runtime mount
+    // Initialise context panel (shows compatible machines) if available
+    try {
+      if (typeof require === 'function') {
+        const ContextPanel = require('../ui/ContextPanel.js').default;
+        if (ContextPanel && this.eventBus && this.statusProviders.technology && !this._contextPanel) {
+          try {
+            this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
+            this._contextPanel.initialise();
+          } catch (e) {}
+        }
+      } else {
+        // Browser: dynamic import for runtime mount
+        if (!this._contextPanel) {
           import('../ui/ContextPanel.js').then((mod) => {
             try {
               const ContextPanel = mod && mod.default;
@@ -133,15 +148,43 @@ export default class UIManager {
             } catch (e) {}
           }).catch(() => {});
         }
-      } catch (e) {}
+      }
+    } catch (e) {}
 
-      this.mounted = true;
+    this.mounted = true;
   }
 
   destroy() {
     this.mounted = false;
+    this._initialised = false;
+    if (this.eventBus && this._bound.onScenarioLoaded && typeof this.eventBus.off === 'function') {
+      this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded);
+      if (this.eventBus.listeners && this.eventBus.listeners.has('scenario:loaded')) {
+        const set = this.eventBus.listeners.get('scenario:loaded');
+        if (set && set.size === 0) this.eventBus.listeners.delete('scenario:loaded');
+      }
+    }
+    this._bound.onScenarioLoaded = null;
+    this._currentScenario = null;
+
     const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
-    if (root) root.innerText = '';
-      try { if (this._selectionInspector && typeof this._selectionInspector.destroy === 'function') this._selectionInspector.destroy(); } catch (e) {}
+    if (root && root.querySelector && typeof root.querySelector === 'function') {
+      const owned = [
+        root.querySelector('.v2-status-block'),
+        root.querySelector('.v2-selection-inspector'),
+        root.querySelector('.v2-context-panel'),
+      ].filter(Boolean);
+      for (const node of owned) {
+        if (node && node.parentNode) node.parentNode.removeChild(node);
+      }
+    } else if (root) {
+      root.innerText = '';
+    }
+
+    try { if (this._selectionInspector && typeof this._selectionInspector.destroy === 'function') this._selectionInspector.destroy(); } catch (e) {}
+    this._selectionInspector = null;
+    try { if (this._contextPanel && typeof this._contextPanel.destroy === 'function') this._contextPanel.destroy(); } catch (e) {}
+    this._contextPanel = null;
+    this._statusEl = null;
   }
 }

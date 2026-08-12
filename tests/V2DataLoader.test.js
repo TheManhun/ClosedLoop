@@ -29,6 +29,31 @@ test('DataLoader loads and stores resources from ApiCoordinator array response',
   assert.equal(r.name, 'Electricity');
 });
 
+test('DataLoader.loadMachines preserves embedded resources array', async () => {
+  const fixture = {
+    value: [
+      {
+        id: 3,
+        name: 'Anaerobic Digester',
+        resources: [
+          { id: 14, direction: 'input', amount: 1, unit: 't/t' },
+          { id: 15, direction: 'output', amount: 100, unit: 'm3/t input' },
+        ],
+      },
+    ],
+    Count: 1,
+  };
+  const api = { fetchMachines: async () => fixture };
+  const dl = new DataLoader({ apiCoordinator: api });
+  await dl.loadMachines();
+  const machine = dl.getMachineById(3);
+  assert.ok(machine);
+  assert.ok(Array.isArray(machine.resources));
+  const resource14 = machine.resources.find((resource) => Number(resource.id) === 14);
+  assert.ok(resource14);
+  assert.equal(resource14.direction, 'input');
+});
+
 test('DataLoader.loadResources rejects non-array response as malformed', async () => {
   const api = { fetchResources: async () => ({ value: [] }) };
   const dl = new DataLoader({ apiCoordinator: api });

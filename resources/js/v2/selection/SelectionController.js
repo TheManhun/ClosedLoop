@@ -6,6 +6,8 @@ export default class SelectionController {
     this._selected = null; // canonical selection
     this._bound = {};
     this._initialised = false;
+    this._lastSelectionPointerId = null;
+    this._selectionRequestAt = 0;
   }
 
   initialise(scene, inputController) {
@@ -48,9 +50,11 @@ export default class SelectionController {
         this.eventBus.emit('selection:changed', out);
       }
       // remember last pointer id for defensive ground-clear
-      this._lastPointerId = sel._pointerId || null;
+      this._lastPointerId = sel._pointerId ?? null;
+      this._lastSelectionPointerId = sel._pointerId ?? null;
+      this._selectionRequestAt = Date.now();
       // clear shortly after to avoid memory leak; no heavy timing expectations
-      try { setTimeout(() => { this._lastPointerId = null; }, 0); } catch (e) { this._lastPointerId = null; }
+      try { setTimeout(() => { this._lastPointerId = null; this._lastSelectionPointerId = null; this._selectionRequestAt = 0; }, 0); } catch (e) { this._lastPointerId = null; this._lastSelectionPointerId = null; this._selectionRequestAt = 0; }
     } catch (e) {}
   }
 
@@ -67,8 +71,13 @@ export default class SelectionController {
       });
       if (overSelectionTarget) return;
 
-      // If pointer id matches last handled request, ignore clear
       const pid = pointer && (pointer.id ?? pointer.pointerId ?? null);
+      const justRequested = this._selectionRequestAt && (Date.now() - this._selectionRequestAt) < 250;
+
+      // A real selection request for this same click should win over any immediate ground-clear.
+      if (justRequested && (pid == null || pid === this._lastSelectionPointerId || this._lastSelectionPointerId == null)) return;
+
+      // If pointer id matches last handled request, ignore clear
       if (pid != null && this._lastPointerId != null && pid === this._lastPointerId) return;
 
       // Instead of clearing directly, emit a canonical ground selection request

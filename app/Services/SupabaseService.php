@@ -64,18 +64,62 @@ class SupabaseService
     }
 
     /**
-     * GET /rest/v1/machines?select=*
+     * Normalize machine_resources rows into the same flattened `resources` array shape
+     * used by the single-machine API.
+     */
+    protected function normalizeMachineResources(array $machine): array
+    {
+        $resources = [];
+
+        if (! empty($machine['machine_resources']) && is_array($machine['machine_resources'])) {
+            foreach ($machine['machine_resources'] as $mr) {
+                $resObj = $mr['resources'] ?? $mr['resource'] ?? null;
+                if (is_array($resObj) && array_values($resObj) === $resObj) {
+                    $resObj = $resObj[0] ?? null;
+                }
+
+                $resources[] = [
+                    'id' => $resObj['id'] ?? null,
+                    'name' => $resObj['name'] ?? null,
+                    'description' => $resObj['description'] ?? null,
+                    'category' => $resObj['category'] ?? null,
+                    'direction' => $mr['direction'] ?? null,
+                    'amount' => $mr['amount'] ?? null,
+                    'unit' => $mr['unit'] ?? null,
+                ];
+            }
+        }
+
+        $machine['resources'] = $resources;
+
+        return $machine;
+    }
+
+    /**
+     * GET /rest/v1/machines?select=...
      */
     public function getMachines(): array
     {
-        $url = $this->baseUrl.'/rest/v1/machines?select=*';
+        $select = rawurlencode('id,name,description,category,image,configurable,power_required,water_required,footprint_x,footprint_y,machine_resources(direction,amount,unit,resources(id,name,description,category,image))');
+        $url = $this->baseUrl.'/rest/v1/machines?select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
                 ->timeout(15)
                 ->get($url)
                 ->throw();
 
-            return $resp->json();
+            $json = $resp->json();
+            if (! is_array($json)) {
+                return [];
+            }
+
+            foreach ($json as $index => $machine) {
+                if (is_array($machine)) {
+                    $json[$index] = $this->normalizeMachineResources($machine);
+                }
+            }
+
+            return $json;
         } catch (RequestException $e) {
             $r = $e->response;
             $status = $r ? $r->status() : null;
@@ -124,29 +168,8 @@ class SupabaseService
                 'technologies' => [],
             ];
 
-            // machine_resources relationship (if present)
-            // Normalize into flattened `resources` array with the shape requested by the API consumer.
-            if (! empty($m['machine_resources']) && is_array($m['machine_resources'])) {
-                foreach ($m['machine_resources'] as $mr) {
-                    // Supabase returns the joined resource under the relation name used in the select.
-                    // We requested `resources(...)` so prefer that, but be tolerant of either form.
-                    $resObj = $mr['resources'] ?? $mr['resource'] ?? null;
-                    // If the relation came back as an indexed array, take the first element
-                    if (is_array($resObj) && array_values($resObj) === $resObj) {
-                        $resObj = $resObj[0] ?? null;
-                    }
-
-                    $out['resources'][] = [
-                        'id' => $resObj['id'] ?? null,
-                        'name' => $resObj['name'] ?? null,
-                        'description' => $resObj['description'] ?? null,
-                        'category' => $resObj['category'] ?? null,
-                        'direction' => $mr['direction'] ?? null,
-                        'amount' => $mr['amount'] ?? null,
-                        'unit' => $mr['unit'] ?? null,
-                    ];
-                }
-            }
+            $m = $this->normalizeMachineResources($m);
+            $out['resources'] = $m['resources'] ?? [];
 
             // machine_links relationship (if present)
             if (! empty($m['machine_links']) && is_array($m['machine_links'])) {
