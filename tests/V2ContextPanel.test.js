@@ -37,8 +37,64 @@ function makeRoot() {
           },
           appendChild(c) { this.children.push(c); c.parentNode = this; },
           removeChild(c) { this.children = this.children.filter((child) => child !== c); },
-          querySelector(sel) { const cls = sel && sel[0] === '.' ? sel.slice(1) : sel; return this.children.find(ch => ch.className === cls) || null; },
-          querySelectorAll(sel) { const cls = sel && sel[0] === '.' ? sel.slice(1) : sel; return this.children.filter(ch => ch.className === cls); }
+          querySelector(sel) {
+            if (!sel) return null;
+            const matchesSelector = (node, selector) => {
+              if (!node) return false;
+              if (selector.startsWith('.')) {
+                const cls = selector.slice(1);
+                return node.className === cls;
+              }
+              if (selector.startsWith('input[')) {
+                const match = selector.match(/^input\[type="?([^"]+)"?\]$/i);
+                if (match) return node.tagName === 'INPUT' && (node.type || '').toLowerCase() === match[1].toLowerCase();
+                return node.tagName === 'INPUT';
+              }
+              if (selector.startsWith('[type="')) {
+                const match = selector.match(/^\[type="?([^"]+)"?\]$/i);
+                if (match) return (node.type || '').toLowerCase() === match[1].toLowerCase();
+              }
+              return node.tagName === selector.toUpperCase();
+            };
+            const walk = (current) => {
+              if (!current) return null;
+              if (matchesSelector(current, sel)) return current;
+              for (const child of current.children || []) {
+                const match = walk(child);
+                if (match) return match;
+              }
+              return null;
+            };
+            return walk(this);
+          },
+          querySelectorAll(sel) {
+            if (!sel) return [];
+            const matchesSelector = (node, selector) => {
+              if (!node) return false;
+              if (selector.startsWith('.')) {
+                const cls = selector.slice(1);
+                return node.className === cls;
+              }
+              if (selector.startsWith('input[')) {
+                const match = selector.match(/^input\[type="?([^"]+)"?\]$/i);
+                if (match) return node.tagName === 'INPUT' && (node.type || '').toLowerCase() === match[1].toLowerCase();
+                return node.tagName === 'INPUT';
+              }
+              if (selector.startsWith('[type="')) {
+                const match = selector.match(/^\[type="?([^"]+)"?\]$/i);
+                if (match) return (node.type || '').toLowerCase() === match[1].toLowerCase();
+              }
+              return node.tagName === selector.toUpperCase();
+            };
+            const results = [];
+            const walk = (current) => {
+              if (!current) return;
+              if (matchesSelector(current, sel)) results.push(current);
+              for (const child of current.children || []) walk(child);
+            };
+            walk(this);
+            return results;
+          }
         };
 
         Object.defineProperty(node, 'innerText', {
@@ -127,6 +183,81 @@ test('ContextPanel: resource selection renders Recommended Technologies', () => 
   const txt = panel.textContent || '';
   assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
   assert.ok(txt.includes('Anaerobic Digester'));
+  cp.destroy();
+});
+
+test('ContextPanel: All Technologies category dropdown is generated from loaded machine data and sorted uniquely', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 1, name: 'Sorting Shed', category: 'Logistics' },
+    { id: 2, name: 'Anaerobic Digester', category: 'Biological Processing' },
+    { id: 3, name: 'Biogas Tank', category: 'Biological Processing' },
+    { id: 4, name: 'Mixer', category: ' ' },
+    { id: 5, name: 'Composter', category: null },
+    { id: 6, name: 'Dryer', category: 'Thermal Processing' },
+    { id: 7, name: 'Duplicate', category: 'Logistics' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 2, name: 'Anaerobic Digester', category: 'Biological Processing' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const select = panel.querySelector('select');
+  assert.ok(select, 'category selector exists');
+  const values = Array.from(select.children).map((opt) => opt.value || opt.innerText || opt.textContent || '');
+  assert.deepEqual(values[0], 'All Categories');
+  assert.ok(values.includes('Biological Processing'));
+  assert.ok(values.includes('Logistics'));
+  assert.ok(values.includes('Thermal Processing'));
+  assert.ok(!values.includes(''));
+  assert.ok(!values.includes(' '));
+  assert.ok(!values.includes('null'));
+  assert.equal(new Set(values).size, values.length, 'duplicate categories are removed');
+  assert.deepEqual([...values].slice(1).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [...values].slice(1));
+  cp.destroy();
+});
+
+test('ContextPanel: filtering All Technologies only affects the catalogue and leaves recommendations alone', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 1, name: 'Sorting Shed', category: 'Logistics' },
+    { id: 2, name: 'Anaerobic Digester', category: 'Biological Processing' },
+    { id: 3, name: 'Biogas Tank', category: 'Biological Processing' },
+    { id: 4, name: 'Dryer', category: 'Thermal Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 2, name: 'Anaerobic Digester', category: 'Biological Processing' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const select = panel.querySelector('select');
+  select.value = 'Biological Processing';
+  if (select.onchange) select.onchange({ target: select });
+
+  const txt = panel.textContent || '';
+  assert.ok(txt.includes('Anaerobic Digester'));
+  assert.ok(txt.includes('Biogas Tank'));
+  assert.ok(!txt.includes('Sorting Shed'));
+  assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
+  assert.ok(txt.includes('Anaerobic Digester'));
+
+  select.value = 'All Categories';
+  if (select.onchange) select.onchange({ target: select });
+  const restored = panel.textContent || '';
+  assert.ok(restored.includes('Sorting Shed'));
+  assert.ok(restored.includes('Dryer'));
   cp.destroy();
 });
 
@@ -254,5 +385,117 @@ test('ContextPanel: repeated selection does not duplicate panels', () => {
   bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
 
   assert.equal(root.querySelectorAll('.v2-context-panel').length, 1, 'single panel remains mounted');
+  cp.destroy();
+});
+
+test('ContextPanel: search filters the All Technologies catalogue by name and is case-insensitive', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' },
+    { id: 2, name: 'Composting Unit', category: 'Biological Processing' },
+    { id: 3, name: 'Thermal Dryer', category: 'Thermal Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const searchInput = panel.querySelector('input[type="search"]');
+  assert.ok(searchInput, 'search input exists');
+  searchInput.value = 'DIG';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  const txt = panel.textContent || '';
+  assert.ok(txt.includes('Anaerobic Digester'));
+  assert.ok(!txt.includes('Composting Unit'));
+  assert.ok(!txt.includes('Thermal Dryer'));
+  cp.destroy();
+});
+
+test('ContextPanel: category and search combine and clearing search restores the filtered catalogue', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' },
+    { id: 2, name: 'Composting Unit', category: 'Biological Processing' },
+    { id: 3, name: 'Thermal Dryer', category: 'Thermal Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const select = panel.querySelector('select');
+  select.value = 'Biological Processing';
+  if (select.onchange) select.onchange({ target: select });
+
+  const searchInput = panel.querySelector('input[type="search"]');
+  searchInput.value = 'comp';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  const catalogue = panel.querySelector('.v2-context-catalogue');
+  assert.ok(catalogue, 'catalogue container exists');
+
+  let txt = catalogue.textContent || '';
+  assert.ok(txt.includes('Composting Unit'));
+  assert.ok(!txt.includes('Anaerobic Digester'));
+
+  searchInput.value = '';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  const refreshedCatalogue = panel.querySelector('.v2-context-catalogue');
+  assert.ok(refreshedCatalogue, 'catalogue refreshed after clearing search');
+  txt = refreshedCatalogue.textContent || '';
+  assert.ok(txt.includes('Anaerobic Digester'));
+  assert.ok(txt.includes('Composting Unit'));
+  assert.ok(!txt.includes('Thermal Dryer'));
+  cp.destroy();
+});
+
+test('ContextPanel: search by category and no-match message are shown without affecting recommendations', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' },
+    { id: 2, name: 'Composting Unit', category: 'Biological Processing' },
+    { id: 3, name: 'Thermal Dryer', category: 'Thermal Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 1, name: 'Anaerobic Digester', category: 'Biological Processing' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const searchInput = panel.querySelector('input[type="search"]');
+  searchInput.value = 'thermal';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  let txt = panel.textContent || '';
+  assert.ok(txt.includes('Thermal Dryer'));
+  assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
+  assert.ok(txt.includes('Anaerobic Digester'));
+
+  searchInput.value = 'zzz-nomatch';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  txt = panel.textContent || '';
+  assert.ok(txt.includes('No technologies match your filters.'));
+  assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
+  assert.ok(txt.includes('Anaerobic Digester'));
   cp.destroy();
 });

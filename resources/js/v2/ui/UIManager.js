@@ -26,7 +26,8 @@ export default class UIManager {
       block.className = 'v2-status-block';
       block.setAttribute('aria-live', 'polite');
       block.style.position = 'relative';
-      block.style.width = 'min(320px, 100%)';
+      block.style.width = 'min(320px, calc(100vw - 32px))';
+      block.style.maxWidth = '320px';
       block.style.padding = '8px 10px';
       block.style.background = 'rgba(9, 12, 18, 0.75)';
       block.style.color = '#dfeaf7';
@@ -35,6 +36,7 @@ export default class UIManager {
       block.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
       block.style.pointerEvents = 'none';
       block.style.zIndex = '21';
+      block.style.margin = '0';
       root.appendChild(block);
       this._statusEl = block;
       return block;

@@ -17,8 +17,9 @@ export default class SelectionInspector {
     el.className = 'v2-selection-inspector';
     // overlay panel anchored to the simulator UI; does not affect layout
     el.style.position = 'relative';
-    el.style.padding = '10px';
-    el.style.width = '280px';
+    el.style.padding = '8px 10px';
+    el.style.width = 'min(320px, calc(100vw - 32px))';
+    el.style.maxWidth = '320px';
     el.style.background = 'rgba(6,8,12,0.76)';
     el.style.color = '#e6eef8';
     el.style.borderRadius = '8px';
@@ -29,6 +30,7 @@ export default class SelectionInspector {
     el.style.display = 'none';
     el.style.pointerEvents = 'auto';
     el.style.zIndex = '21';
+    el.style.margin = '0';
     el.setAttribute('aria-live', 'polite');
 
     root.appendChild(el);
