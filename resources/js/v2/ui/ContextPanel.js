@@ -9,8 +9,10 @@ export default class ContextPanel {
     this._currentResource = null;
     this._view = 'recommended';
     this._selectedMachineId = null;
-    this._catalogueCategory = 'All Categories';
+    this._catalogueCategory = 'All Technologies';
     this._catalogueSearch = '';
+    this._catalogueView = 'All';
+    this._favouriteMachineIds = new Set();
   }
 
   initialise() {
@@ -159,6 +161,13 @@ export default class ContextPanel {
     meta.appendChild(cat);
     left.appendChild(meta);
 
+    const actions = document.createElement('div');
+    actions.style.display = 'flex';
+    actions.style.alignItems = 'center';
+    actions.style.gap = '6px';
+    actions.style.flexShrink = '0';
+
+    const favouriteButton = this._makeFavouriteButton(machine);
     const button = this._makeActionButton(selected ? 'Selected' : 'Select', () => {
       const selectedMachine = machine || null;
       this._selectedMachineId = selectedMachine && (selectedMachine.id ?? selectedMachine.machine_id ?? null);
@@ -173,8 +182,11 @@ export default class ContextPanel {
     });
     button.style.flexShrink = '0';
 
+    actions.appendChild(favouriteButton);
+    actions.appendChild(button);
+
     card.appendChild(left);
-    card.appendChild(button);
+    card.appendChild(actions);
     return card;
   }
 
@@ -188,6 +200,52 @@ export default class ContextPanel {
       categories.add(text);
     }
     return Array.from(categories).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  _getMachineId(machine) {
+    const id = machine && (machine.id ?? machine.machine_id ?? null);
+    if (id == null) return null;
+    return Number(id);
+  }
+
+  _isFavouriteMachine(machine) {
+    const id = this._getMachineId(machine);
+    if (id == null) return false;
+    return this._favouriteMachineIds.has(id);
+  }
+
+  _toggleFavouriteMachine(machine) {
+    const id = this._getMachineId(machine);
+    if (id == null) return;
+    if (this._favouriteMachineIds.has(id)) {
+      this._favouriteMachineIds.delete(id);
+    } else {
+      this._favouriteMachineIds.add(id);
+    }
+    this._renderCurrent();
+  }
+
+  _makeFavouriteButton(machine) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = this._isFavouriteMachine(machine) ? 'Remove favourite' : 'Add favourite';
+    btn.innerText = this._isFavouriteMachine(machine) ? '★' : '☆';
+    btn.style.border = '1px solid rgba(255,255,255,0.2)';
+    btn.style.borderRadius = '999px';
+    btn.style.width = '28px';
+    btn.style.height = '28px';
+    btn.style.padding = '0';
+    btn.style.background = 'rgba(255,255,255,0.04)';
+    btn.style.color = this._isFavouriteMachine(machine) ? '#facc15' : '#dfe7f2';
+    btn.style.cursor = 'pointer';
+    btn.style.fontSize = '14px';
+    btn.style.lineHeight = '1';
+    btn.style.flexShrink = '0';
+    btn.onclick = (event) => {
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      this._toggleFavouriteMachine(machine);
+    };
+    return btn;
   }
 
   _getMachineSearchText(machine) {
@@ -215,11 +273,15 @@ export default class ContextPanel {
   _getFilteredCatalogueMachines() {
     const allMachines = this._getAllMachines();
     const searchTerm = (this._catalogueSearch || '').trim().toLowerCase();
-    const category = this._catalogueCategory || 'All Categories';
+    const selection = this._catalogueCategory || 'All Technologies';
 
     return allMachines.filter((machine) => {
       const categoryValue = machine && (machine.category || machine.category_name || null);
-      const matchesCategory = category === 'All Categories' || (categoryValue != null && String(categoryValue).trim() === String(category).trim());
+      const isFavouritesOnly = selection === '★ Favourites';
+      const matchesFavourites = !isFavouritesOnly || this._isFavouriteMachine(machine);
+      if (!matchesFavourites) return false;
+
+      const matchesCategory = selection === 'All Technologies' || selection === '★ Favourites' || (categoryValue != null && String(categoryValue).trim() === String(selection).trim());
       if (!matchesCategory) return false;
 
       if (!searchTerm) return true;
@@ -303,7 +365,7 @@ export default class ContextPanel {
       select.style.marginBottom = '8px';
 
       const categories = this._getSortedUniqueCategories(allMachines);
-      const options = ['All Categories', ...categories];
+      const options = ['All Technologies', '★ Favourites', ...categories];
       for (const optionValue of options) {
         const option = document.createElement('option');
         option.value = optionValue;
@@ -313,8 +375,8 @@ export default class ContextPanel {
       }
 
       select.onchange = (event) => {
-        const value = event && event.target ? event.target.value : 'All Categories';
-        this._catalogueCategory = value || 'All Categories';
+        const value = event && event.target ? event.target.value : 'All Technologies';
+        this._catalogueCategory = value || 'All Technologies';
         this._renderCurrent();
       };
 
@@ -435,7 +497,7 @@ export default class ContextPanel {
       select.style.marginBottom = '8px';
 
       const categories = this._getSortedUniqueCategories(allMachines);
-      const options = ['All Categories', ...categories];
+      const options = ['All Technologies', '★ Favourites', ...categories];
       for (const optionValue of options) {
         const option = document.createElement('option');
         option.value = optionValue;
@@ -445,8 +507,8 @@ export default class ContextPanel {
       }
 
       select.onchange = (event) => {
-        const value = event && event.target ? event.target.value : 'All Categories';
-        this._catalogueCategory = value || 'All Categories';
+        const value = event && event.target ? event.target.value : 'All Technologies';
+        this._catalogueCategory = value || 'All Technologies';
         this._renderCurrent();
       };
 
@@ -541,8 +603,9 @@ export default class ContextPanel {
         this._currentResource = payload.meta || {};
         this._selectedMachineId = null;
         this._view = 'recommended';
-        this._catalogueCategory = 'All Categories';
+        this._catalogueCategory = 'All Technologies';
         this._catalogueSearch = '';
+        this._catalogueView = 'All';
         this._renderCurrent();
         return;
       }
@@ -567,5 +630,9 @@ export default class ContextPanel {
     this._currentResource = null;
     this._view = 'recommended';
     this._selectedMachineId = null;
+    this._catalogueCategory = 'All Technologies';
+    this._catalogueSearch = '';
+    this._catalogueView = 'All';
+    this._favouriteMachineIds = new Set();
   }
 }

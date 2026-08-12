@@ -164,6 +164,12 @@ function clickButton(panel, label) {
   if (matches[0].onclick) matches[0].onclick({ preventDefault() {} });
 }
 
+function clickStar(panel, label = '☆') {
+  const matches = collect(panel, (n) => n && n.tagName === 'BUTTON' && (n.innerText || n.textContent) === label);
+  assert.ok(matches.length > 0, `star button ${label} exists`);
+  if (matches[0].onclick) matches[0].onclick({ preventDefault() {} });
+}
+
 test('ContextPanel: resource selection renders Recommended Technologies', () => {
   const root = makeRoot();
   const bus = new MockBus();
@@ -186,7 +192,7 @@ test('ContextPanel: resource selection renders Recommended Technologies', () => 
   cp.destroy();
 });
 
-test('ContextPanel: All Technologies category dropdown is generated from loaded machine data and sorted uniquely', () => {
+test('ContextPanel: catalogue dropdown includes All Technologies, Favourites and sorted categories', () => {
   const root = makeRoot();
   const bus = new MockBus();
   const allMachines = [
@@ -209,9 +215,10 @@ test('ContextPanel: All Technologies category dropdown is generated from loaded 
   const panel = root.querySelector('.v2-context-panel');
   clickButton(panel, 'Show All Technologies ▼');
   const select = panel.querySelector('select');
-  assert.ok(select, 'category selector exists');
+  assert.ok(select, 'catalogue selector exists');
   const values = Array.from(select.children).map((opt) => opt.value || opt.innerText || opt.textContent || '');
-  assert.deepEqual(values[0], 'All Categories');
+  assert.deepEqual(values[0], 'All Technologies');
+  assert.deepEqual(values[1], '★ Favourites');
   assert.ok(values.includes('Biological Processing'));
   assert.ok(values.includes('Logistics'));
   assert.ok(values.includes('Thermal Processing'));
@@ -219,7 +226,7 @@ test('ContextPanel: All Technologies category dropdown is generated from loaded 
   assert.ok(!values.includes(' '));
   assert.ok(!values.includes('null'));
   assert.equal(new Set(values).size, values.length, 'duplicate categories are removed');
-  assert.deepEqual([...values].slice(1).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [...values].slice(1));
+  assert.deepEqual([...values].slice(2).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [...values].slice(2));
   cp.destroy();
 });
 
@@ -253,7 +260,7 @@ test('ContextPanel: filtering All Technologies only affects the catalogue and le
   assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
   assert.ok(txt.includes('Anaerobic Digester'));
 
-  select.value = 'All Categories';
+  select.value = 'All Technologies';
   if (select.onchange) select.onchange({ target: select });
   const restored = panel.textContent || '';
   assert.ok(restored.includes('Sorting Shed'));
@@ -385,6 +392,172 @@ test('ContextPanel: repeated selection does not duplicate panels', () => {
   bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
 
   assert.equal(root.querySelectorAll('.v2-context-panel').length, 1, 'single panel remains mounted');
+  cp.destroy();
+});
+
+test('ContextPanel: favourite star toggles on and off for a machine', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const mockTech = {
+    getCompatibleMachinesForResource: () => [{ id: 7, name: 'Gas Generator', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickStar(panel, '☆');
+  assert.ok(cp._favouriteMachineIds.has(7), 'machine was favourited');
+
+  clickStar(panel, '★');
+  assert.ok(!cp._favouriteMachineIds.has(7), 'machine was unfavourited');
+  cp.destroy();
+});
+
+test('ContextPanel: favourite state is shared between Recommended and All cards', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 7, name: 'Gas Generator', category: 'Energy' },
+    { id: 8, name: 'Biogas Tank', category: 'Energy' },
+    { id: 9, name: 'Composting Unit', category: 'Biological Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 7, name: 'Gas Generator', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickStar(panel, '☆');
+  clickButton(panel, 'Show All Technologies ▼');
+  const allText = (panel.textContent || '');
+  assert.ok(cp._favouriteMachineIds.has(7));
+  assert.ok(allText.includes('Gas Generator'));
+  assert.ok(allText.includes('★'));
+  cp.destroy();
+});
+
+test('ContextPanel: favourites filter shows only favourited catalogue entries', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 7, name: 'Gas Generator', category: 'Energy' },
+    { id: 8, name: 'Biogas Tank', category: 'Energy' },
+    { id: 9, name: 'Composting Unit', category: 'Biological Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 7, name: 'Gas Generator', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+
+  const gasGenButton = collect(panel, (n) => n && n.tagName === 'BUTTON' && (n.innerText || n.textContent) === '☆')[0];
+  if (gasGenButton && gasGenButton.onclick) gasGenButton.onclick({ preventDefault() {} });
+
+  const select = panel.querySelector('select');
+  select.value = '★ Favourites';
+  if (select.onchange) select.onchange({ target: select });
+
+  let catalogueText = (panel.querySelector('.v2-context-catalogue') && panel.querySelector('.v2-context-catalogue').textContent) || '';
+  assert.ok(catalogueText.includes('Gas Generator'));
+  assert.ok(!catalogueText.includes('Composting Unit'));
+
+  clickStar(panel, '★');
+  catalogueText = (panel.querySelector('.v2-context-catalogue') && panel.querySelector('.v2-context-catalogue').textContent) || '';
+  assert.ok(!catalogueText.includes('Gas Generator'));
+  assert.ok(!catalogueText.includes('Composting Unit'));
+  cp.destroy();
+});
+
+test('ContextPanel: category + search combine in the catalogue and favourites remains a separate option', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 7, name: 'Gas Generator', category: 'Energy' },
+    { id: 8, name: 'Biogas Tank', category: 'Energy' },
+    { id: 9, name: 'Biogas Filter', category: 'Treatment' },
+    { id: 10, name: 'Composting Unit', category: 'Biological Processing' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: () => [{ id: 7, name: 'Gas Generator', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickButton(panel, 'Show All Technologies ▼');
+  const select = panel.querySelector('select');
+  const searchInput = panel.querySelector('input[type="search"]');
+
+  const gasGenButton = collect(panel, (n) => n && n.tagName === 'BUTTON' && (n.innerText || n.textContent) === '☆')[0];
+  if (gasGenButton && gasGenButton.onclick) gasGenButton.onclick({ preventDefault() {} });
+
+  const biogasButton = collect(panel, (n) => n && n.tagName === 'BUTTON' && (n.innerText || n.textContent) === '☆' && n !== gasGenButton)[0];
+  if (biogasButton && biogasButton.onclick) biogasButton.onclick({ preventDefault() {} });
+
+  select.value = 'Energy';
+  if (select.onchange) select.onchange({ target: select });
+  searchInput.value = 'gas';
+  if (searchInput.oninput) searchInput.oninput({ target: searchInput });
+
+  const txt = panel.textContent || '';
+  assert.ok(txt.includes('Gas Generator'));
+  assert.ok(txt.includes('Biogas Tank'));
+  assert.ok(!txt.includes('Composting Unit'));
+  assert.ok(!txt.includes('Biogas Filter'));
+  cp.destroy();
+});
+
+test('ContextPanel: changing selected resource does not erase favourites', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const allMachines = [
+    { id: 7, name: 'Gas Generator', category: 'Energy' },
+    { id: 8, name: 'Biogas Tank', category: 'Energy' },
+  ];
+  const mockTech = {
+    dataLoader: { getMachines: () => allMachines },
+    getCompatibleMachinesForResource: (rid) => Number(rid) === 14 ? [{ id: 7, name: 'Gas Generator', category: 'Energy' }] : [{ id: 8, name: 'Biogas Tank', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickStar(panel, '☆');
+  assert.ok(cp._favouriteMachineIds.has(7));
+
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Food Waste', resource: { id: 22 } } });
+  assert.ok(cp._favouriteMachineIds.has(7), 'favourite state persists after resource change');
+  cp.destroy();
+});
+
+test('ContextPanel: recommendations remain unchanged by favourite state', () => {
+  const root = makeRoot();
+  const bus = new MockBus();
+  const mockTech = {
+    getCompatibleMachinesForResource: () => [{ id: 7, name: 'Gas Generator', category: 'Energy' }, { id: 8, name: 'Biogas Tank', category: 'Energy' }],
+  };
+  const cp = new ContextPanel({ eventBus: bus, technology: mockTech });
+  cp.initialise();
+  bus.emit('selection:changed', { kind: 'resource', meta: { display_name: 'Agricultural Organic Residues', resource: { id: 14 } } });
+
+  const panel = root.querySelector('.v2-context-panel');
+  clickStar(panel, '☆');
+  const txt = (panel.textContent || '');
+  assert.ok(txt.includes('Gas Generator'));
+  assert.ok(txt.includes('Biogas Tank'));
+  assert.ok(txt.includes('RECOMMENDED TECHNOLOGIES'));
   cp.destroy();
 });
 
