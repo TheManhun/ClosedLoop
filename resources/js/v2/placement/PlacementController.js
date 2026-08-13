@@ -11,9 +11,11 @@ export default class PlacementController {
     this._graphics = null;
     this._ghost = null;
     this._previewMachine = null;
+    this._scenarioObjects = [];
     this._previewState = {
       visible: false,
       valid: false,
+      reason: null,
       x: 0,
       y: 0,
       width: 0,
@@ -32,6 +34,8 @@ export default class PlacementController {
     if (this.eventBus && typeof this.eventBus.on === 'function') {
       this._bound.onTechnologySelected = (payload) => this._onTechnologySelected(payload);
       this.eventBus.on('technology:selected', this._bound.onTechnologySelected);
+      this._bound.onScenarioLoaded = (scenario) => this._onScenarioLoaded(scenario);
+      this.eventBus.on('scenario:loaded', this._bound.onScenarioLoaded);
     }
 
     if (this._scene && this._scene.input && typeof this._scene.input.on === 'function') {
@@ -72,6 +76,14 @@ export default class PlacementController {
     return { ...this._previewState };
   }
 
+  getScenarioObjects() {
+    return Array.isArray(this._scenarioObjects) ? this._scenarioObjects.slice() : [];
+  }
+
+  getOccupiedRectangles() {
+    return this._getOccupiedRectanglesFromScenarioObjects();
+  }
+
   updatePointerWorld(worldPos = { x: 0, y: 0 }) {
     const x = Number(worldPos && worldPos.x != null ? worldPos.x : 0) || 0;
     const y = Number(worldPos && worldPos.y != null ? worldPos.y : 0) || 0;
@@ -84,6 +96,7 @@ export default class PlacementController {
     this._previewState = {
       visible: false,
       valid: false,
+      reason: null,
       x: 0,
       y: 0,
       width: 0,
@@ -92,6 +105,13 @@ export default class PlacementController {
       scenarioObjectCreated: false,
     };
     this._destroyGhost();
+  }
+
+  _onScenarioLoaded(scenario) {
+    this._scenarioObjects = Array.isArray(scenario && scenario.scenario_objects) ? scenario.scenario_objects.slice() : [];
+    if (this._previewMachine) {
+      this._updateGhostPosition(this._lastPointerWorld.x, this._lastPointerWorld.y, true);
+    }
   }
 
   _pointerWorldFromPointer(pointer) {
@@ -123,6 +143,7 @@ export default class PlacementController {
     this._previewState = {
       visible: true,
       valid: true,
+      reason: null,
       x: 0,
       y: 0,
       width: ghostWidth,
@@ -152,6 +173,54 @@ export default class PlacementController {
     return true;
   }
 
+  _getOccupiedRectanglesFromScenarioObjects() {
+    const objects = Array.isArray(this._scenarioObjects) ? this._scenarioObjects : [];
+    return objects.reduce((rects, obj) => {
+      if (!obj) return rects;
+      const x = Number(obj.position_x ?? obj.x ?? 0);
+      const y = Number(obj.position_y ?? obj.y ?? 0);
+      const machine = obj.machine || obj.machine_data || obj;
+      const footprintX = Number(machine && (machine.footprint_x ?? machine.footprintX ?? machine.width ?? 1)) || 1;
+      const footprintY = Number(machine && (machine.footprint_y ?? machine.footprintY ?? machine.height ?? 1)) || 1;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return rects;
+      const width = footprintX * this.cellSize;
+      const height = footprintY * this.cellSize;
+      // Scenario objects are rendered centred on their world position: x/y are the centre,
+      // not the top-left corner. Convert the occupied rectangle to the matching top-left
+      // AABB so collision checks line up with the same visual origin used by ScenarioObjectRenderer.
+      rects.push({
+        id: obj.id ?? obj.object_key ?? null,
+        x: x - (width / 2),
+        y: y - (height / 2),
+        width,
+        height,
+      });
+      return rects;
+    }, []);
+  }
+
+  _rectanglesOverlap(a, b) {
+    const aRight = a.x + a.width;
+    const aBottom = a.y + a.height;
+    const bRight = b.x + b.width;
+    const bBottom = b.y + b.height;
+
+    const intersectsHorizontally = a.x < bRight && aRight > b.x;
+    const intersectsVertically = a.y < bBottom && aBottom > b.y;
+    return intersectsHorizontally && intersectsVertically;
+  }
+
+  _hasCollision(x, y, width, height) {
+    const previewRect = {
+      x: x - (width / 2),
+      y: y - (height / 2),
+      width,
+      height,
+    };
+    const occupied = this.getOccupiedRectangles();
+    return occupied.some((rect) => this._rectanglesOverlap(previewRect, rect));
+  }
+
   _updateGhostPosition(x, y, force = false) {
     if (!this._previewMachine) {
       this._hideGhost();
@@ -163,12 +232,42 @@ export default class PlacementController {
     const height = Number(this._previewMachine.footprint_y ?? this._previewMachine.footprintY ?? 2) || 2;
     const previewWidth = Math.max(this.cellSize, width * this.cellSize);
     const previewHeight = Math.max(this.cellSize, height * this.cellSize);
-    const valid = this._isValidWorldPoint(snapped.x, snapped.y, previewWidth, previewHeight);
+    const worldValid = this._isValidWorldPoint(snapped.x, snapped.y, previewWidth, previewHeight);
+
+    if (!worldValid) {
+      this._previewState = {
+        ...this._previewState,
+        visible: false,
+        valid: false,
+        reason: null,
+        x: snapped.x,
+        y: snapped.y,
+        width: previewWidth,
+        height: previewHeight,
+        placed: false,
+        scenarioObjectCreated: false,
+      };
+      this._destroyGhost();
+      return;
+    }
+
+    const occupied = this.getOccupiedRectangles();
+    const previewRect = {
+      x: snapped.x - (previewWidth / 2),
+      y: snapped.y - (previewHeight / 2),
+      width: previewWidth,
+      height: previewHeight,
+    };
+    const horizontalOverlap = occupied.some((rect) => previewRect.x < rect.x + rect.width && previewRect.x + previewRect.width > rect.x);
+    const verticalOverlap = occupied.some((rect) => previewRect.y < rect.y + rect.height && previewRect.y + previewRect.height > rect.y);
+    const collision = this._hasCollision(snapped.x, snapped.y, previewWidth, previewHeight);
+    const valid = !collision;
 
     this._previewState = {
       ...this._previewState,
       visible: true,
       valid,
+      reason: collision ? 'collision' : null,
       x: snapped.x,
       y: snapped.y,
       width: previewWidth,
@@ -177,11 +276,7 @@ export default class PlacementController {
       scenarioObjectCreated: false,
     };
 
-    if (force || valid) {
-      this._renderGhost();
-    } else {
-      this._hideGhost();
-    }
+    this._renderGhost();
   }
 
   _renderGhost() {
@@ -202,10 +297,17 @@ export default class PlacementController {
       return;
     }
 
+    const drawX = this._previewState.x - (drawWidth / 2);
+    const drawY = this._previewState.y - (drawHeight / 2);
+
     if (this._previewMachine.image && scene.add.image) {
-      const img = scene.add.image(this._previewState.x + drawWidth / 2, this._previewState.y + drawHeight / 2, this._previewMachine.image);
+      const img = scene.add.image(this._previewState.x, this._previewState.y, this._previewMachine.image);
       if (img) {
-        img.setAlpha(0.45);
+        if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5);
+        const valid = !!this._previewState.valid;
+        const tint = valid ? 0x7dd3fc : 0xff5c5c;
+        if (typeof img.setTint === 'function') img.setTint(tint);
+        img.setAlpha(valid ? 0.45 : 0.75);
         img.setDisplaySize(drawWidth, drawHeight);
         img.setVisible(true);
         this._ghost = img;
@@ -215,11 +317,12 @@ export default class PlacementController {
     }
 
     const graphics = scene.add.graphics();
+    const color = this._previewState.valid ? 0x7dd3fc : 0xff5c5c;
     if (typeof graphics.clear === 'function') graphics.clear();
-    if (typeof graphics.lineStyle === 'function') graphics.lineStyle(2, 0x7dd3fc, 0.9);
-    if (typeof graphics.fillStyle === 'function') graphics.fillStyle(0x7dd3fc, 0.28);
-    if (typeof graphics.fillRect === 'function') graphics.fillRect(this._previewState.x, this._previewState.y, drawWidth, drawHeight);
-    if (typeof graphics.strokeRect === 'function') graphics.strokeRect(this._previewState.x, this._previewState.y, drawWidth, drawHeight);
+    if (typeof graphics.lineStyle === 'function') graphics.lineStyle(2, color, 0.9);
+    if (typeof graphics.fillStyle === 'function') graphics.fillStyle(color, this._previewState.valid ? 0.28 : 0.45);
+    if (typeof graphics.fillRect === 'function') graphics.fillRect(drawX, drawY, drawWidth, drawHeight);
+    if (typeof graphics.strokeRect === 'function') graphics.strokeRect(drawX, drawY, drawWidth, drawHeight);
 
     this._graphics = graphics;
     this._ghost = graphics;
@@ -241,6 +344,7 @@ export default class PlacementController {
       ...this._previewState,
       visible: false,
       valid: false,
+      reason: null,
     };
     this._destroyGhost();
   }
@@ -248,6 +352,9 @@ export default class PlacementController {
   destroy() {
     if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onTechnologySelected) {
       this.eventBus.off('technology:selected', this._bound.onTechnologySelected);
+    }
+    if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onScenarioLoaded) {
+      this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded);
     }
 
     if (this._scene && this._scene.input && typeof this._scene.input.off === 'function' && this._bound.onPointerMove) {

@@ -97,7 +97,7 @@ test('DataLoader.loadScenario preserves scenario_objects and machine metadata', 
         selectable: true,
         object_config: {},
         notes: "Represents existing regional wastewater treatment infrastructure serving Melbourne's south-east.",
-        machine: { id: 2, stable_key: null, name: 'Wastewater Treatment Plant', category: 'Water Treatment', image: 'Primary_Clarifier.png' },
+        machine: { id: 2, stable_key: null, name: 'Wastewater Treatment Plant', category: 'Water Treatment', image: 'Primary_Clarifier.png', footprint_x: 4, footprint_y: 3 },
       },
     ],
   };
@@ -111,6 +111,8 @@ test('DataLoader.loadScenario preserves scenario_objects and machine metadata', 
   assert.equal(so.id, 1);
   assert.equal(so.machine.id, 2);
   assert.equal(so.machine.name, 'Wastewater Treatment Plant');
+  assert.equal(so.machine.footprint_x, 4);
+  assert.equal(so.machine.footprint_y, 3);
   // object_config should be preserved as an object (empty object serializes as {})
   assert.equal(typeof so.object_config, 'object');
   assert.equal(Object.keys(so.object_config).length, 0);

@@ -196,6 +196,292 @@ test('malformed or non-finite coordinates still invalidate preview', () => {
   assert.equal(infinityState.valid, false);
 });
 
+test('valid empty location stays green and valid', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 30, name: 'Clear Cell', image: 'clear.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 9, position_x: 256, position_y: 256, machine: { id: 99, footprint_x: 3, footprint_y: 3 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(0, 0);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+  assert.equal(state.visible, true);
+});
+
+test('direct overlap becomes invalid collision and the ghost stays visible', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 31, name: 'Overlap Machine', image: 'overlap.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 10, position_x: 0, position_y: 0, machine: { id: 100, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(64, 64);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+  assert.equal(state.visible, true);
+});
+
+test('moving away from collision restores valid green state', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 32, name: 'Move Away', image: 'moveaway.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 11, position_x: 0, position_y: 0, machine: { id: 101, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+
+  controller._updateGhostPosition(64, 64);
+  let state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+
+  controller._updateGhostPosition(256, 256);
+  state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+  assert.equal(state.visible, true);
+});
+
+test('partial multi-cell overlap is collision', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 33, name: 'Partial Overlap', image: 'partial.png', footprint_x: 3, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 12, position_x: 128, position_y: 0, machine: { id: 102, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(64, 0);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+});
+
+test('touching edges do not count as collision', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 34, name: 'Touch Edge', image: 'edge.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 13, position_x: 0, position_y: 0, machine: { id: 103, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(192, 0);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+});
+
+test('negative coordinates remain valid when clear and collision at negative coordinates is invalid', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 35, name: 'Negative Coord', image: 'negative.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(-64, -64);
+  let state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 14, position_x: -128, position_y: -128, machine: { id: 104, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  controller._updateGhostPosition(-64, -64);
+  state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+});
+
+test('Escape still cancels preview normally', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 36, name: 'Cancel', image: 'cancel.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('technology:selected', { machine });
+  controller.cancelPreview();
+
+  assert.equal(controller.getPreviewMachine(), null);
+  assert.equal(controller.getPreviewState().visible, false);
+  assert.equal(controller.getPreviewState().valid, false);
+  assert.equal(controller.getPreviewState().reason, null);
+});
+
+test('no permanent placement path exists during collision preview', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 37, name: 'No Placement', image: 'noplace.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 15, position_x: 0, position_y: 0, machine: { id: 105, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(64, 64);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.placed, false);
+  assert.equal(state.scenarioObjectCreated, false);
+  assert.equal(typeof controller._persistPreviewPlacement, 'undefined');
+});
+
+test('scenario object centre-origin rectangles align with visible renderer geometry', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const scenario = {
+    scenario_objects: [
+      { id: 22, position_x: 128, position_y: 128, machine: { id: 106, footprint_x: 2, footprint_y: 2 } },
+    ],
+  };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', scenario);
+
+  const rect = controller.getOccupiedRectangles()[0];
+  assert.deepEqual(rect, { id: 22, x: 64, y: 64, width: 128, height: 128 });
+});
+
+test('visible overlap on a centre-origin scenario object turns preview invalid red', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 40, name: 'Visible Collision', image: 'collision.png', footprint_x: 2, footprint_y: 2 };
+  const tintLog = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
+      }),
+      image: () => ({
+        setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint(color) { tintLog.push(color); }, destroy() {},
+      }),
+    },
+    textures: { exists: () => false },
+  };
+
+  controller.initialise(fakeScene);
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 23, position_x: 192, position_y: 192, machine: { id: 107, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(128, 128);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+  assert.equal(tintLog[tintLog.length - 1], 0xff5c5c);
+});
+
+test('moving away from centre-origin collision restores green valid state', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 41, name: 'Recover Green', image: 'recover.png', footprint_x: 2, footprint_y: 2 };
+  const tintLog = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
+      }),
+      image: () => ({
+        setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint(color) { tintLog.push(color); }, destroy() {},
+      }),
+    },
+    textures: { exists: () => false },
+  };
+
+  controller.initialise(fakeScene);
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 24, position_x: 192, position_y: 192, machine: { id: 108, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+
+  controller._updateGhostPosition(128, 128);
+  let state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+
+  controller._updateGhostPosition(320, 320);
+  state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+  assert.equal(tintLog[tintLog.length - 1], 0x7dd3fc);
+});
+
+test('edge-touching remains valid for centre-origin objects', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 42, name: 'Edge Touch', image: 'edge.png', footprint_x: 2, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 25, position_x: 128, position_y: 128, machine: { id: 109, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(256, 128);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, true);
+  assert.equal(state.reason, null);
+});
+
+test('multi-cell footprints are detected correctly with centre-origin objects', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 43, name: 'Multi Cell', image: 'multicell.png', footprint_x: 3, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [
+    { id: 26, position_x: 192, position_y: 128, machine: { id: 110, footprint_x: 2, footprint_y: 2 } },
+  ] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(128, 64);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.valid, false);
+  assert.equal(state.reason, 'collision');
+});
+
+test('live scenario objects are supplied through the production eventBus path', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const scenario = {
+    scenario_objects: [
+      { id: 22, position_x: 128, position_y: 128, machine: { id: 106, footprint_x: 2, footprint_y: 2 } },
+    ],
+  };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', scenario);
+
+  assert.equal(controller.getScenarioObjects().length, 1);
+  assert.equal(controller.getScenarioObjects()[0].id, 22);
+  assert.equal(controller.getOccupiedRectangles().length, 1);
+});
+
 test('destroy removes listeners', () => {
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus });
