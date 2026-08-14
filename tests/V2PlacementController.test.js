@@ -878,6 +878,59 @@ test('rotation resets to zero when selecting another technology and R without pr
   assert.equal(controller.getPreviewState().visible, false);
 });
 
+test('valid preview confirms a canonical scenario_object payload and reloads after success', async () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64, scenarioId: 9 });
+  const machine = { id: 120, name: 'Confirmable', image: 'confirmable.png', footprint_x: 2, footprint_y: 2 };
+  const created = [];
+  const reloaded = [];
+  const api = {
+    createScenarioObject: async (payload) => {
+      created.push(payload);
+      return { id: 88, ...payload };
+    },
+  };
+
+  controller.initialise(makeScene());
+  controller.setApiCoordinator(api);
+  controller.setScenarioLoader({ load: async (scenarioId) => { reloaded.push(scenarioId); return { id: scenarioId, scenario_objects: [] }; } });
+
+  bus.emit('technology:selected', { machine });
+  controller.updatePointerWorld({ x: 128, y: 128 });
+
+  const confirmed = await controller.confirmPlacement();
+  assert.equal(confirmed, true);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].scenario_id, 9);
+  assert.equal(created[0].machine_id, 120);
+  assert.equal(created[0].grid_x, 2);
+  assert.equal(created[0].grid_y, 2);
+  assert.equal(created[0].rotation, 0);
+  assert.equal(created[0].object_type, 'machine');
+  assert.equal(reloaded.length, 1);
+  assert.equal(reloaded[0], 9);
+  assert.equal(controller.getPreviewState().scenarioObjectCreated, true);
+});
+
+test('invalid preview cannot confirm placement and emits failure state', async () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64, scenarioId: 4 });
+  const machine = { id: 121, name: 'Blocked', image: 'blocked.png', footprint_x: 2, footprint_y: 2 };
+  const api = { createScenarioObject: async () => { throw new Error('should not be called'); } };
+
+  controller.initialise(makeScene());
+  controller.setApiCoordinator(api);
+  bus.emit('scenario:loaded', { scenario_objects: [{ id: 333, grid_x: 0, grid_y: 0, machine: { id: 777, footprint_x: 2, footprint_y: 2 } }] });
+  bus.emit('technology:selected', { machine });
+  controller.updatePointerWorld({ x: 0, y: 0 });
+
+  const confirmed = await controller.confirmPlacement();
+  assert.equal(confirmed, false);
+  assert.equal(controller.getPreviewState().valid, false);
+  assert.equal(controller.getPreviewState().reason, 'collision');
+  assert.equal(controller.getPreviewState().scenarioObjectCreated, false);
+});
+
 test('destroy removes listeners', () => {
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus });

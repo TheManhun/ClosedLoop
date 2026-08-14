@@ -1,11 +1,16 @@
 import { machineImage } from '../renderer/AssetPaths.js';
 
 export default class PlacementController {
-  constructor({ eventBus, cellSize = 64, worldWidth = Number.POSITIVE_INFINITY, worldHeight = Number.POSITIVE_INFINITY } = {}) {
+  constructor({ eventBus, cellSize = 64, worldWidth = Number.POSITIVE_INFINITY, worldHeight = Number.POSITIVE_INFINITY, scenarioId = null } = {}) {
     this.eventBus = eventBus;
     this.cellSize = cellSize;
     this.worldWidth = worldWidth;
     this.worldHeight = worldHeight;
+    this._scenarioId = Number.isFinite(Number(scenarioId)) ? Number(scenarioId) : null;
+    this._apiCoordinator = null;
+    this._scenarioLoader = null;
+    this._runtimeEventConsumerInstalled = false;
+    this._isSubmitting = false;
     this._initialised = false;
     this._bound = {};
     this._scene = null;
@@ -54,6 +59,20 @@ export default class PlacementController {
         }
       };
       this._scene.input.on('pointermove', this._bound.onPointerMove);
+
+      this._bound.onPointerDown = (pointer) => {
+        if (!pointer || typeof pointer.leftButtonDown !== 'function' || !pointer.leftButtonDown()) {
+          return;
+        }
+        if (this._isSubmitting) {
+          return;
+        }
+        if (!this._previewMachine || !this._previewState || !this._previewState.valid) {
+          return;
+        }
+        this.confirmPlacement();
+      };
+      this._scene.input.on('pointerdown', this._bound.onPointerDown);
     }
 
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -91,8 +110,109 @@ export default class PlacementController {
     return Array.isArray(this._scenarioObjects) ? this._scenarioObjects.slice() : [];
   }
 
+  setApiCoordinator(apiCoordinator) {
+    this._apiCoordinator = apiCoordinator || null;
+  }
+
+  setScenarioLoader(loader) {
+    this._scenarioLoader = loader || null;
+  }
+
+  setRuntimeEventConsumerInstalled(enabled = true) {
+    this._runtimeEventConsumerInstalled = !!enabled;
+  }
+
   getOccupiedRectangles() {
     return this._getOccupiedRectanglesFromScenarioObjects();
+  }
+
+  async confirmPlacement() {
+    if (!this._previewMachine) {
+      return false;
+    }
+
+    if (this._isSubmitting) {
+      return false;
+    }
+
+    if (!this._previewState || !this._previewState.valid) {
+      if (this.eventBus && typeof this.eventBus.emit === 'function') {
+        this.eventBus.emit('placement:failed', {
+          machine: this._previewMachine,
+          reason: this._previewState && this._previewState.reason ? this._previewState.reason : 'invalid-preview',
+          preview: this.getPreviewState(),
+        });
+      }
+      return false;
+    }
+
+    const scenarioId = this._scenarioId;
+    if (!scenarioId) {
+      return false;
+    }
+
+    const { gridX, gridY } = this._gridCoordsFromWorld(this._previewState.x, this._previewState.y);
+    const machine = this._previewMachine;
+    const payload = {
+      scenario_id: Number(scenarioId),
+      object_type: 'machine',
+      object_key: `machine_${machine.id}_${gridX}_${gridY}_${Date.now()}`,
+      name: machine.name || `Machine ${machine.id ?? 'unknown'}`,
+      machine_id: Number(machine.id),
+      grid_x: Number(gridX),
+      grid_y: Number(gridY),
+      position_x: Number(this._previewState.x),
+      position_y: Number(this._previewState.y),
+      rotation: Number(this._previewState.rotation ?? 0),
+      fixed: true,
+      selectable: true,
+      object_config: {},
+      notes: null,
+    };
+
+    if (this.eventBus && typeof this.eventBus.emit === 'function') {
+      this.eventBus.emit('placement:confirm', { ...payload, machine, preview: this.getPreviewState() });
+    }
+
+    if (this._runtimeEventConsumerInstalled) {
+      this._isSubmitting = true;
+      return true;
+    }
+
+    if (!this._apiCoordinator || typeof this._apiCoordinator.createScenarioObject !== 'function') {
+      this._isSubmitting = false;
+      return false;
+    }
+
+    this._isSubmitting = true;
+
+    try {
+      const result = await this._apiCoordinator.createScenarioObject(payload);
+      this._previewState = {
+        ...this._previewState,
+        placed: true,
+        scenarioObjectCreated: true,
+      };
+      if (this.eventBus && typeof this.eventBus.emit === 'function') {
+        this.eventBus.emit('placement:committed', { ...payload, created: result, machine, preview: this.getPreviewState() });
+      }
+      if (this._scenarioLoader && typeof this._scenarioLoader.load === 'function') {
+        await this._scenarioLoader.load(scenarioId);
+      }
+      return true;
+    } catch (error) {
+      if (this.eventBus && typeof this.eventBus.emit === 'function') {
+        this.eventBus.emit('placement:failed', {
+          machine,
+          payload,
+          preview: this.getPreviewState(),
+          error,
+        });
+      }
+      return false;
+    } finally {
+      this._isSubmitting = false;
+    }
   }
 
   _getOccupiedRectanglesFromScenarioObjects() {
@@ -295,6 +415,7 @@ export default class PlacementController {
   }
 
   _onScenarioLoaded(scenario) {
+    this._scenarioId = Number.isFinite(Number(scenario && scenario.id)) ? Number(scenario.id) : this._scenarioId;
     this._scenarioObjects = Array.isArray(scenario && scenario.scenario_objects) ? scenario.scenario_objects.slice() : [];
     if (this._previewMachine) {
       this._updateGhostPosition(this._lastPointerWorld.x, this._lastPointerWorld.y, true);
@@ -515,6 +636,9 @@ export default class PlacementController {
 
     if (this._scene && this._scene.input && typeof this._scene.input.off === 'function' && this._bound.onPointerMove) {
       this._scene.input.off('pointermove', this._bound.onPointerMove);
+    }
+    if (this._scene && this._scene.input && typeof this._scene.input.off === 'function' && this._bound.onPointerDown) {
+      this._scene.input.off('pointerdown', this._bound.onPointerDown);
     }
 
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function' && this._bound.onKeydown) {

@@ -18,6 +18,22 @@ export async function run() {
   const api = new ApiCoordinator({ eventBus });
   const dataLoader = new DataLoader({ apiCoordinator: api });
 
+  eventBus.on('placement:confirm', async (payload) => {
+    if (!payload || !payload.scenario_id || !payload.machine_id) return;
+    try {
+      const created = await api.createScenarioObject(payload);
+      if (eventBus && typeof eventBus.emit === 'function') {
+        eventBus.emit('placement:committed', { ...payload, created });
+      }
+      const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
+      await scenarioLoader.load(payload.scenario_id);
+    } catch (error) {
+      if (eventBus && typeof eventBus.emit === 'function') {
+        eventBus.emit('placement:failed', { payload, error });
+      }
+    }
+  });
+
   const technology = new TechnologyEngine({ eventBus, dataLoader });
   const simulation = new SimulationEngine({ eventBus, technologyEngine: technology });
 
@@ -25,6 +41,9 @@ export async function run() {
 
   const renderer = new Renderer({ eventBus });
   const toolbox = new ToolboxController({ eventBus });
+  if (renderer && renderer._placementController && typeof renderer._placementController.setRuntimeEventConsumerInstalled === 'function') {
+    renderer._placementController.setRuntimeEventConsumerInstalled(true);
+  }
 
   const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
   const uiManager = new UIManager({ eventBus, renderer, toolbox, statusProviders: { eventBus, api, dataLoader, technology, simulation, game: gameEngine, scenarioLoader } });

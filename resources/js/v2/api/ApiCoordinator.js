@@ -96,6 +96,43 @@ export default class ApiCoordinator {
     }
   }
 
+  async createScenarioObject(scenarioIdOrPayload, maybePayload) {
+    const payload = arguments.length >= 2 ? (maybePayload || {}) : (scenarioIdOrPayload && typeof scenarioIdOrPayload === 'object' ? scenarioIdOrPayload : {});
+    const scenarioId = arguments.length >= 2 ? scenarioIdOrPayload : (payload && Number.isFinite(Number(payload.scenario_id)) ? Number(payload.scenario_id) : null);
+    if (!scenarioId) {
+      throw new Error('ApiCoordinator.createScenarioObject requires a scenario id');
+    }
+    const url = `/api/scenarios/${encodeURIComponent(scenarioId)}/scenario-objects`;
+    let resp;
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      const err = new Error(`ApiCoordinator.createScenarioObject network error: ${e.message}`);
+      err.cause = e;
+      throw err;
+    }
+    if (!resp || !resp.ok) {
+      let bodyText = '';
+      try { bodyText = await resp.text(); } catch (e) { bodyText = '<unreadable body>'; }
+      const msg = `ApiCoordinator.createScenarioObject HTTP ${resp ? resp.status : 'ERR'}: ${resp ? resp.statusText : ''} ${bodyText}`;
+      const err = new Error(msg);
+      err.status = resp ? resp.status : null;
+      throw err;
+    }
+    try {
+      const json = await resp.json();
+      return json;
+    } catch (e) {
+      const err = new Error(`ApiCoordinator.createScenarioObject invalid JSON: ${e.message}`);
+      err.cause = e;
+      throw err;
+    }
+  }
+
   destroy() {
     // Clean up network resources if any.
   }

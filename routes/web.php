@@ -22,4 +22,5 @@ Route::prefix('api')->group(function () {
     Route::get('/machines/{id}', [MachineController::class, 'show']);
     Route::get('/resources', [ResourcesController::class, 'index']);
     Route::get('/scenarios/{id}', [ScenarioController::class, 'show']);
+    Route::post('/scenarios/{scenarioId}/scenario-objects', [ScenarioController::class, 'store']);
 });

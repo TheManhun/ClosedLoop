@@ -357,6 +357,51 @@ class SupabaseService
     }
 
     /**
+     * Insert a scenario object using the canonical placement contract.
+     */
+    public function createScenarioObject(int $scenarioId, array $payload): array
+    {
+        $url = $this->baseUrl.'/rest/v1/scenario_objects?select=*';
+
+        $normalized = [
+            'scenario_id' => (int) $scenarioId,
+            'object_type' => $payload['object_type'] ?? 'machine',
+            'object_key' => $payload['object_key'] ?? null,
+            'name' => $payload['name'] ?? null,
+            'machine_id' => $payload['machine_id'] ?? null,
+            'grid_x' => $payload['grid_x'] ?? null,
+            'grid_y' => $payload['grid_y'] ?? null,
+            'position_x' => $payload['position_x'] ?? null,
+            'position_y' => $payload['position_y'] ?? null,
+            'rotation' => $payload['rotation'] ?? 0,
+            'fixed' => $payload['fixed'] ?? true,
+            'selectable' => $payload['selectable'] ?? true,
+            'object_config' => $payload['object_config'] ?? [],
+            'notes' => $payload['notes'] ?? null,
+        ];
+
+        try {
+            $resp = Http::withHeaders($this->headers(true))
+                ->timeout(15)
+                ->post($url, $normalized)
+                ->throw();
+
+            $json = $resp->json();
+            if (is_array($json) && array_is_list($json) && ! empty($json)) {
+                return $json[0];
+            }
+
+            return is_array($json) ? $json : [$json];
+        } catch (RequestException $e) {
+            $r = $e->response;
+            $status = $r ? $r->status() : null;
+            $body = $r ? $r->body() : $e->getMessage();
+            Log::error('Supabase createScenarioObject failed', ['url' => $url, 'status' => $status, 'body' => $body, 'payload' => $normalized]);
+            throw $e;
+        }
+    }
+
+    /**
      * Diagnostic fetch for raw status and body without throwing.
      * Returns ['status' => int|null, 'body' => string]
      */
