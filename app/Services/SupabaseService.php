@@ -46,14 +46,26 @@ class SupabaseService
      */
     public function getResources(): array
     {
-        $url = $this->baseUrl.'/rest/v1/resources?select=*';
+        $select = rawurlencode('id,stable_key,name,description,category,image,unit,physical_state,visual_type,is_pollutant,resource_transport_classes(transport_class)');
+        $url = $this->baseUrl.'/rest/v1/resources?select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
                 ->timeout(15)
                 ->get($url)
                 ->throw();
 
-            return $resp->json();
+            $json = $resp->json();
+            if (! is_array($json)) {
+                return [];
+            }
+
+            foreach ($json as $index => $resource) {
+                if (is_array($resource)) {
+                    $json[$index] = $this->normalizeTransportClasses($resource);
+                }
+            }
+
+            return $json;
         } catch (RequestException $e) {
             $r = $e->response;
             $status = $r ? $r->status() : null;
@@ -67,6 +79,41 @@ class SupabaseService
      * Normalize machine_resources rows into the same flattened `resources` array shape
      * used by the single-machine API.
      */
+    protected function normalizeTransportClasses(array $resource): array
+    {
+        $transportClasses = [];
+        $rows = $resource['resource_transport_classes'] ?? $resource['transport_classes'] ?? [];
+
+        if (isset($resource['transport_classes']) && is_string($resource['transport_classes'])) {
+            $rows = [$resource['transport_classes']];
+        }
+
+        if (! is_array($rows)) {
+            $rows = [];
+        }
+
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                $value = $row['transport_class'] ?? $row['name'] ?? null;
+            } else {
+                $value = $row;
+            }
+
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $normalized = strtolower((string) $value);
+            if (! in_array($normalized, $transportClasses, true)) {
+                $transportClasses[] = $normalized;
+            }
+        }
+
+        $resource['transport_classes'] = $transportClasses;
+
+        return $resource;
+    }
+
     protected function normalizeMachineResources(array $machine): array
     {
         $resources = [];
@@ -78,7 +125,7 @@ class SupabaseService
                     $resObj = $resObj[0] ?? null;
                 }
 
-                $resources[] = [
+                $resource = [
                     'id' => $resObj['id'] ?? null,
                     'name' => $resObj['name'] ?? null,
                     'description' => $resObj['description'] ?? null,
@@ -87,6 +134,19 @@ class SupabaseService
                     'amount' => $mr['amount'] ?? null,
                     'unit' => $mr['unit'] ?? null,
                 ];
+
+                if (is_array($resObj) && ! empty($resObj['resource_transport_classes'])) {
+                    $resource = $this->normalizeTransportClasses(array_merge($resObj, ['resource_transport_classes' => $resObj['resource_transport_classes']]));
+                    $resource['id'] = $resObj['id'] ?? null;
+                    $resource['name'] = $resObj['name'] ?? null;
+                    $resource['description'] = $resObj['description'] ?? null;
+                    $resource['category'] = $resObj['category'] ?? null;
+                    $resource['direction'] = $mr['direction'] ?? null;
+                    $resource['amount'] = $mr['amount'] ?? null;
+                    $resource['unit'] = $mr['unit'] ?? null;
+                }
+
+                $resources[] = $resource;
             }
         }
 
@@ -230,7 +290,7 @@ class SupabaseService
     {
         // Request fields: id,stable_key,name,population,reference_year,data_status,
         // and nested scenario_resources with joined resources fields.
-        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,map_image,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type)),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,grid_x,grid_y,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image,footprint_x,footprint_y))');
+        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,map_image,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type,resource_transport_classes(transport_class))),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,grid_x,grid_y,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image,footprint_x,footprint_y)),scenario_connections(id,scenario_id,source_object_id,target_object_id,resource_id,status,created_at,updated_at)');
         $url = $this->baseUrl.'/rest/v1/scenarios?id=eq.'.rawurlencode((string) $id).'&select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
@@ -253,6 +313,7 @@ class SupabaseService
                 'map_image' => $s['map_image'] ?? null,
                 'scenario_resources' => [],
                 'scenario_objects' => [],
+                'scenario_connections' => [],
             ];
 
             if (! empty($s['scenario_resources']) && is_array($s['scenario_resources'])) {
@@ -261,6 +322,22 @@ class SupabaseService
                     // If relation returned as array, take first
                     if (is_array($resObj) && array_values($resObj) === $resObj) {
                         $resObj = $resObj[0] ?? null;
+                    }
+
+                    $resourcePayload = $resObj ? [
+                        'id' => $resObj['id'] ?? null,
+                        'stable_key' => $resObj['stable_key'] ?? null,
+                        'name' => $resObj['name'] ?? null,
+                        'category' => $resObj['category'] ?? null,
+                        'unit' => $resObj['unit'] ?? null,
+                        'image' => $resObj['image'] ?? null,
+                        'physical_state' => $resObj['physical_state'] ?? null,
+                        'visual_type' => $resObj['visual_type'] ?? null,
+                        'is_pollutant' => isset($resObj['is_pollutant']) ? boolval($resObj['is_pollutant']) : null,
+                    ] : null;
+
+                    if ($resourcePayload && ! empty($resObj['resource_transport_classes'])) {
+                        $resourcePayload = $this->normalizeTransportClasses(array_merge($resourcePayload, ['resource_transport_classes' => $resObj['resource_transport_classes']]));
                     }
 
                     $out['scenario_resources'][] = [
@@ -278,17 +355,7 @@ class SupabaseService
                         'fixed' => isset($sr['fixed']) ? boolval($sr['fixed']) : null,
                         'selectable' => isset($sr['selectable']) ? boolval($sr['selectable']) : null,
                         'notes' => $sr['notes'] ?? null,
-                        'resource' => $resObj ? [
-                            'id' => $resObj['id'] ?? null,
-                            'stable_key' => $resObj['stable_key'] ?? null,
-                            'name' => $resObj['name'] ?? null,
-                            'category' => $resObj['category'] ?? null,
-                            'unit' => $resObj['unit'] ?? null,
-                            'image' => $resObj['image'] ?? null,
-                            'physical_state' => $resObj['physical_state'] ?? null,
-                            'visual_type' => $resObj['visual_type'] ?? null,
-                            'is_pollutant' => isset($resObj['is_pollutant']) ? boolval($resObj['is_pollutant']) : null,
-                        ] : null,
+                        'resource' => $resourcePayload,
                     ];
                 }
             }
@@ -301,6 +368,21 @@ class SupabaseService
 
                     return $sa <=> $sb;
                 });
+            }
+
+            if (! empty($s['scenario_connections']) && is_array($s['scenario_connections'])) {
+                foreach ($s['scenario_connections'] as $connection) {
+                    $out['scenario_connections'][] = [
+                        'id' => $connection['id'] ?? null,
+                        'scenario_id' => $connection['scenario_id'] ?? null,
+                        'source_object_id' => $connection['source_object_id'] ?? null,
+                        'target_object_id' => $connection['target_object_id'] ?? null,
+                        'resource_id' => $connection['resource_id'] ?? null,
+                        'status' => $connection['status'] ?? 'active',
+                        'created_at' => $connection['created_at'] ?? null,
+                        'updated_at' => $connection['updated_at'] ?? null,
+                    ];
+                }
             }
 
             // Normalize scenario_objects if provided (include nested machines relation)
