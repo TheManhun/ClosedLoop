@@ -510,6 +510,21 @@ A practical first-stage research question for grant proposals is:
 
 An initial pilot can test this hypothesis with a small collection of specialists (for example: Waste, Energy, Water, Systems) and a basic Systems Engineer synthesiser. Demonstrating measurable improvement in design exploration, bottleneck identification and traceable recommendations provides evidence to scale the architecture and justify further investment.
 
+## Youtube
+Each machine and resourse can have links to video from youtube or a few videos depending on whats needed
+
+## Virticle farms
+Future technology: Controlled-Environment Vertical Farm
+
+Potential inputs: electricity, water, nutrients/fertiliser, CO₂, cooling/heating.
+
+Potential outputs: food crops, organic residues, wastewater/nutrient solution, waste heat.
+
+Closed Loop integrations worth investigating: recovered water → farm; fertiliser/digestate processing → nutrients; captured CO₂ → crop enrichment where appropriate; data-centre/industrial heat → thermal management where technically useful; renewable electricity/solar façade → electrical demand.
+
+The important modelling lesson from Vertical Harvest is that the building isn't merely a "farm." It's an engineered controlled environment, which fits Closed Loop's resource-relationship philosophy extremely well. https://verticalharvestfarms.com/
+
+
 # Final thought
 
 Closed Loop is an investment in curiosity.
@@ -524,12 +539,4 @@ But we can build a place where more people have the opportunity to find it.
 As the game progresses and the polution is eliminated we make the dirt turn to grass Degraded dirt → recovering soil → patchy grass → healthy green landscape.
 
 
-Future technology: Controlled-Environment Vertical Farm
 
-Potential inputs: electricity, water, nutrients/fertiliser, CO₂, cooling/heating.
-
-Potential outputs: food crops, organic residues, wastewater/nutrient solution, waste heat.
-
-Closed Loop integrations worth investigating: recovered water → farm; fertiliser/digestate processing → nutrients; captured CO₂ → crop enrichment where appropriate; data-centre/industrial heat → thermal management where technically useful; renewable electricity/solar façade → electrical demand.
-
-The important modelling lesson from Vertical Harvest is that the building isn't merely a "farm." It's an engineered controlled environment, which fits Closed Loop's resource-relationship philosophy extremely well. https://verticalharvestfarms.com/
