@@ -1,3 +1,5 @@
+import { machineImage } from '../renderer/AssetPaths.js';
+
 export default class PlacementController {
   constructor({ eventBus, cellSize = 64, worldWidth = Number.POSITIVE_INFINITY, worldHeight = Number.POSITIVE_INFINITY } = {}) {
     this.eventBus = eventBus;
@@ -10,6 +12,8 @@ export default class PlacementController {
     this._input = null;
     this._graphics = null;
     this._ghost = null;
+    this._artworkSprite = null;
+    this._artworkKey = null;
     this._previewMachine = null;
     this._scenarioObjects = [];
     this._previewState = {
@@ -156,6 +160,107 @@ export default class PlacementController {
     this._destroyGhost();
   }
 
+  _normaliseMachineImagePath(image) {
+    if (!image || typeof image !== 'string') return null;
+    if (image.startsWith('http://') || image.startsWith('https://') || image.startsWith('/')) return image;
+    return machineImage(image) || image;
+  }
+
+  _getArtworkInfo(machine = this._previewMachine) {
+    if (!machine || !machine.image || typeof machine.image !== 'string') return null;
+    const url = this._normaliseMachineImagePath(machine.image);
+    if (!url) return null;
+    const file = String(url).split(/[\\/]/).pop() || 'machine';
+    const safeName = String(file).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const key = `preview_machine_${machine.id ?? 'unknown'}_${safeName}`;
+    return { key, url };
+  }
+
+  _destroyArtworkSprite() {
+    if (this._artworkSprite && typeof this._artworkSprite.destroy === 'function') {
+      this._artworkSprite.destroy();
+    }
+    this._artworkSprite = null;
+    this._artworkKey = null;
+  }
+
+  _destroyPreviewGraphics() {
+    if (this._graphics && typeof this._graphics.destroy === 'function') {
+      this._graphics.destroy();
+    }
+    this._graphics = null;
+  }
+
+  _ensureGraphics() {
+    const scene = this._scene;
+    if (!scene || !scene.add || typeof scene.add.graphics !== 'function') return null;
+    if (!this._graphics || typeof this._graphics.clear !== 'function') {
+      this._graphics = scene.add.graphics();
+    }
+    return this._graphics;
+  }
+
+  _renderArtworkSprite() {
+    const scene = this._scene;
+    const machine = this._previewMachine;
+    if (!scene || !machine) {
+      this._destroyArtworkSprite();
+      return;
+    }
+
+    const info = this._getArtworkInfo(machine);
+    if (!info) {
+      this._destroyArtworkSprite();
+      return;
+    }
+
+    const textureExists = scene.textures && typeof scene.textures.exists === 'function'
+      ? scene.textures.exists(info.key)
+      : false;
+
+    if (!textureExists) {
+      this._destroyArtworkSprite();
+      if (scene.load && typeof scene.load.image === 'function') {
+        try {
+          scene.load.image(info.key, info.url);
+          if (typeof scene.load.once === 'function') {
+            scene.load.once('complete', () => {
+              if (this._previewMachine && this._previewMachine.id === machine.id) {
+                this._renderGhost();
+              }
+            });
+          }
+          if (typeof scene.load.start === 'function') {
+            scene.load.start();
+          }
+        } catch (e) {}
+      }
+      return;
+    }
+
+    if (!this._artworkSprite || this._artworkKey !== info.key) {
+      if (this._artworkSprite && typeof this._artworkSprite.destroy === 'function') {
+        this._artworkSprite.destroy();
+      }
+      const sprite = scene.add.image(this._previewState.x + (this._previewState.width / 2), this._previewState.y + (this._previewState.height / 2), info.key);
+      if (!sprite) {
+        this._artworkSprite = null;
+        this._artworkKey = null;
+        return;
+      }
+      this._artworkSprite = sprite;
+      this._artworkKey = info.key;
+      if (typeof this._artworkSprite.setOrigin === 'function') this._artworkSprite.setOrigin(0.5, 0.5);
+    }
+
+    const x = this._previewState.x + (this._previewState.width / 2);
+    const y = this._previewState.y + (this._previewState.height / 2);
+    if (typeof this._artworkSprite.setPosition === 'function') this._artworkSprite.setPosition(x, y);
+    if (typeof this._artworkSprite.setVisible === 'function') this._artworkSprite.setVisible(true);
+    if (typeof this._artworkSprite.setAlpha === 'function') this._artworkSprite.setAlpha(this._previewState.valid ? 0.9 : 0.75);
+    if (typeof this._artworkSprite.setDisplaySize === 'function') this._artworkSprite.setDisplaySize(this._previewState.width, this._previewState.height);
+  }
+
   _onScenarioLoaded(scenario) {
     this._scenarioObjects = Array.isArray(scenario && scenario.scenario_objects) ? scenario.scenario_objects.slice() : [];
     if (this._previewMachine) {
@@ -222,10 +327,6 @@ export default class PlacementController {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
     if (width <= 0 || height <= 0) return false;
-
-    // V2 uses an expandable engineering workspace rather than a fixed parcel-size bound.
-    // A finite world coordinate is valid; future placement rules may reject specific
-    // collisions, reserved zones, or infrastructure constraints later.
     return true;
   }
 
@@ -297,68 +398,67 @@ export default class PlacementController {
       return;
     }
 
-    const width = Number(this._previewMachine.footprint_x ?? this._previewMachine.footprintX ?? 2) || 2;
-    const height = Number(this._previewMachine.footprint_y ?? this._previewMachine.footprintY ?? 2) || 2;
-    const drawWidth = Math.max(this.cellSize, width * this.cellSize);
-    const drawHeight = Math.max(this.cellSize, height * this.cellSize);
-
     const scene = this._scene;
     if (!scene || !scene.add || typeof scene.add.graphics !== 'function') {
       return;
     }
 
+    const width = Number(this._previewMachine.footprint_x ?? this._previewMachine.footprintX ?? 2) || 2;
+    const height = Number(this._previewMachine.footprint_y ?? this._previewMachine.footprintY ?? 2) || 2;
+    const drawWidth = Math.max(this.cellSize, width * this.cellSize);
+    const drawHeight = Math.max(this.cellSize, height * this.cellSize);
     const drawX = this._previewState.x;
     const drawY = this._previewState.y;
     const valid = !!this._previewState.valid;
     const color = valid ? 0x7dd3fc : 0xff5c5c;
 
-    if (this._previewMachine.image && scene.add.image) {
-      if (!this._ghost || typeof this._ghost.setTint !== 'function') {
-        this._destroyGhost();
-        const img = scene.add.image(this._previewState.x + (drawWidth / 2), this._previewState.y + (drawHeight / 2), this._previewMachine.image);
-        if (!img) {
-          return;
-        }
-        if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5);
-        this._ghost = img;
-        this._graphics = null;
-      }
+    const graphics = this._ensureGraphics();
+    if (graphics) {
+      graphics.clear();
+      graphics.lineStyle(2, color, 0.9);
+      graphics.fillStyle(color, valid ? 0.28 : 0.45);
+      graphics.fillRect(drawX, drawY, drawWidth, drawHeight);
+      graphics.strokeRect(drawX, drawY, drawWidth, drawHeight);
+    }
+    this._ghost = graphics;
 
-      const img = this._ghost;
-      if (img) {
-        if (typeof img.setPosition === 'function') img.setPosition(this._previewState.x + (drawWidth / 2), this._previewState.y + (drawHeight / 2));
-        if (typeof img.setTint === 'function') img.setTint(color);
-        img.setAlpha(valid ? 0.45 : 0.75);
-        if (typeof img.setDisplaySize === 'function') img.setDisplaySize(drawWidth, drawHeight);
-        if (typeof img.setVisible === 'function') img.setVisible(true);
+    const info = this._getArtworkInfo(this._previewMachine);
+    if (!info) {
+      this._destroyArtworkSprite();
+      return;
+    }
+
+    const textureExists = scene.textures && typeof scene.textures.exists === 'function'
+      ? scene.textures.exists(info.key)
+      : false;
+
+    if (!textureExists) {
+      this._destroyArtworkSprite();
+      if (scene.load && typeof scene.load.image === 'function') {
+        try {
+          scene.load.image(info.key, info.url);
+          if (typeof scene.load.once === 'function') {
+            scene.load.once('complete', () => {
+              if (this._previewMachine) {
+                this._renderGhost();
+              }
+            });
+          }
+          if (typeof scene.load.start === 'function') {
+            scene.load.start();
+          }
+        } catch (e) {}
       }
       return;
     }
 
-    if (!this._ghost || typeof this._ghost.clear !== 'function') {
-      this._destroyGhost();
-      const graphics = scene.add.graphics();
-      this._graphics = graphics;
-      this._ghost = graphics;
-    }
-
-    const graphics = this._ghost;
-    if (typeof graphics.clear === 'function') graphics.clear();
-    if (typeof graphics.lineStyle === 'function') graphics.lineStyle(2, color, 0.9);
-    if (typeof graphics.fillStyle === 'function') graphics.fillStyle(color, valid ? 0.28 : 0.45);
-    if (typeof graphics.fillRect === 'function') graphics.fillRect(drawX, drawY, drawWidth, drawHeight);
-    if (typeof graphics.strokeRect === 'function') graphics.strokeRect(drawX, drawY, drawWidth, drawHeight);
+    this._renderArtworkSprite();
   }
 
   _destroyGhost() {
-    if (this._ghost && typeof this._ghost.destroy === 'function') {
-      this._ghost.destroy();
-    }
+    this._destroyArtworkSprite();
+    this._destroyPreviewGraphics();
     this._ghost = null;
-    if (this._graphics && typeof this._graphics.destroy === 'function') {
-      this._graphics.destroy();
-    }
-    this._graphics = null;
   }
 
   _hideGhost() {
@@ -395,3 +495,4 @@ export default class PlacementController {
     this._lastPointerWorld = { x: 0, y: 0 };
   }
 }
+

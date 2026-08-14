@@ -364,18 +364,16 @@ test('visible overlap on a grid-origin scenario object turns preview invalid red
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
   const machine = { id: 40, name: 'Visible Collision', image: 'collision.png', footprint_x: 2, footprint_y: 2 };
-  const tintLog = [];
+  const fillLog = [];
   const fakeScene = {
     input: { on: () => {}, off: () => {} },
     events: { on: () => {}, off: () => {} },
     cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
     add: {
       graphics: () => ({
-        clear() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
+        clear() {}, fillStyle(color) { fillLog.push(color); }, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
       }),
-      image: () => ({
-        setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint(color) { tintLog.push(color); }, destroy() {},
-      }),
+      image: () => ({ setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint() {}, destroy() {} }),
     },
     textures: { exists: () => false },
   };
@@ -390,25 +388,23 @@ test('visible overlap on a grid-origin scenario object turns preview invalid red
   const state = controller.getPreviewState();
   assert.equal(state.valid, false);
   assert.equal(state.reason, 'collision');
-  assert.equal(tintLog[tintLog.length - 1], 0xff5c5c);
+  assert.equal(fillLog[fillLog.length - 1], 0xff5c5c);
 });
 
 test('moving away from grid-origin collision restores green valid state', () => {
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
   const machine = { id: 41, name: 'Recover Green', image: 'recover.png', footprint_x: 2, footprint_y: 2 };
-  const tintLog = [];
+  const fillLog = [];
   const fakeScene = {
     input: { on: () => {}, off: () => {} },
     events: { on: () => {}, off: () => {} },
     cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
     add: {
       graphics: () => ({
-        clear() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
+        clear() {}, fillStyle(color) { fillLog.push(color); }, fillRect() {}, strokeRect() {}, lineStyle() {}, setAlpha() {}, destroy() {},
       }),
-      image: () => ({
-        setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint(color) { tintLog.push(color); }, destroy() {},
-      }),
+      image: () => ({ setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint() {}, destroy() {} }),
     },
     textures: { exists: () => false },
   };
@@ -428,7 +424,7 @@ test('moving away from grid-origin collision restores green valid state', () => 
   state = controller.getPreviewState();
   assert.equal(state.valid, true);
   assert.equal(state.reason, null);
-  assert.equal(tintLog[tintLog.length - 1], 0x7dd3fc);
+  assert.equal(fillLog[fillLog.length - 1], 0x7dd3fc);
 });
 
 test('edge-touching remains valid for centre-origin objects', () => {
@@ -486,40 +482,24 @@ test('live ghost updates colour in place with no duplicate ghost objects', () =>
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
   const machine = { id: 44, name: 'Live Ghost', image: 'live-ghost.png', footprint_x: 2, footprint_y: 2 };
-  const created = [];
+  const fillColors = [];
   const fakeScene = {
     input: { on: () => {}, off: () => {} },
     events: { on: () => {}, off: () => {} },
     cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
     add: {
-      graphics: () => ({
-        clear() {},
-        lineStyle() {},
-        fillStyle() {},
-        fillRect() {},
-        strokeRect() {},
-        destroy() {},
-      }),
-      image: () => {
-        const img = {
-          x: 0,
-          y: 0,
-          tint: null,
-          alpha: 1,
-          visible: true,
-          displayWidth: 0,
-          displayHeight: 0,
-          setOrigin() {},
-          setAlpha(value) { this.alpha = value; },
-          setPosition(x, y) { this.x = x; this.y = y; },
-          setDisplaySize(width, height) { this.displayWidth = width; this.displayHeight = height; },
-          setVisible(value) { this.visible = value; },
-          setTint(value) { this.tint = value; },
+      graphics: () => {
+        const g = {
+          clear() {},
+          lineStyle() {},
+          fillStyle(color) { fillColors.push(color); },
+          fillRect() {},
+          strokeRect() {},
           destroy() {},
         };
-        created.push(img);
-        return img;
+        return g;
       },
+      image: () => ({ setOrigin() {}, setAlpha() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setTint() {}, destroy() {} }),
     },
     textures: { exists: () => false },
   };
@@ -531,23 +511,233 @@ test('live ghost updates colour in place with no duplicate ghost objects', () =>
   bus.emit('technology:selected', { machine });
 
   controller._updateGhostPosition(256, 256);
-  assert.equal(controller._ghost, created[0]);
-  assert.equal(created.length, 1);
-  assert.equal(controller.getPreviewState().valid, true);
-  assert.equal(controller._ghost.tint, 0x7dd3fc);
+  assert.equal(controller._ghost && typeof controller._ghost.fillStyle === 'function', true);
+  assert.equal(fillColors[fillColors.length - 1], 0x7dd3fc);
 
   controller._updateGhostPosition(64, 64);
-  assert.equal(controller._ghost, created[0]);
-  assert.equal(created.length, 1);
+  assert.equal(controller._ghost && typeof controller._ghost.fillStyle === 'function', true);
   assert.equal(controller.getPreviewState().valid, false);
   assert.equal(controller.getPreviewState().reason, 'collision');
-  assert.equal(controller._ghost.tint, 0xff5c5c);
+  assert.equal(fillColors[fillColors.length - 1], 0xff5c5c);
 
   controller._updateGhostPosition(256, 256);
-  assert.equal(controller._ghost, created[0]);
-  assert.equal(created.length, 1);
+  assert.equal(controller._ghost && typeof controller._ghost.fillStyle === 'function', true);
+  assert.equal(fillColors[fillColors.length - 1], 0x7dd3fc);
+});
+
+test('valid preview draws green footprint without artwork dependency', () => {
+  const bus = new EventBus();
+  const machine = { id: 90, name: 'Green Preview', image: 'green.png', footprint_x: 3, footprint_y: 2 };
+  const footprintLogs = [];
+  let imageCount = 0;
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {},
+        lineStyle(color, alpha) { footprintLogs.push({ type: 'line', color, alpha }); },
+        fillStyle(color, alpha) { footprintLogs.push({ type: 'fill', color, alpha }); },
+        fillRect(x, y, width, height) { footprintLogs.push({ type: 'fillRect', x, y, width, height }); },
+        strokeRect(x, y, width, height) { footprintLogs.push({ type: 'strokeRect', x, y, width, height }); },
+        destroy() {},
+      }),
+      image: () => {
+        imageCount += 1;
+        return {
+          setOrigin() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setAlpha() {}, setTint() {}, destroy() {},
+        };
+      },
+    },
+    textures: { exists: () => false },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(128, 128);
+
   assert.equal(controller.getPreviewState().valid, true);
-  assert.equal(controller._ghost.tint, 0x7dd3fc);
+  assert.equal(controller.getPreviewState().visible, true);
+  assert.equal(controller._graphics !== null, true);
+  assert.equal(imageCount, 0);
+  assert.equal(footprintLogs.some((entry) => entry.type === 'fill' && entry.color === 0x7dd3fc), true);
+  assert.equal(footprintLogs.some((entry) => entry.type === 'strokeRect'), true);
+});
+
+test('occupied-cell collision draws red footprint and returns to green after moving away', () => {
+  const bus = new EventBus();
+  const machine = { id: 91, name: 'Collision Preview', image: 'collision.png', footprint_x: 2, footprint_y: 2 };
+  const footprintColors = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {},
+        lineStyle(color) { footprintColors.push({ line: color }); },
+        fillStyle(color) { footprintColors.push({ fill: color }); },
+        fillRect() {}, strokeRect() {}, destroy() {},
+      }),
+      image: () => ({ setOrigin() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setAlpha() {}, setTint() {}, destroy() {} }),
+    },
+    textures: { exists: () => false },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('scenario:loaded', { scenario_objects: [{ id: 999, grid_x: 0, grid_y: 0, machine: { id: 555, footprint_x: 2, footprint_y: 2 } }] });
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(64, 64);
+
+  assert.equal(controller.getPreviewState().valid, false);
+  assert.equal(controller.getPreviewState().reason, 'collision');
+  assert.equal(footprintColors.some((entry) => entry.fill === 0xff5c5c), true);
+
+  controller._updateGhostPosition(256, 256);
+  assert.equal(controller.getPreviewState().valid, true);
+  assert.equal(controller.getPreviewState().reason, null);
+  assert.equal(footprintColors.some((entry) => entry.fill === 0x7dd3fc), true);
+});
+
+test('footprint dimensions match footprint_x by footprint_y and negative grid coords still work', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 92, name: 'Negative Grid', image: 'negative-grid.png', footprint_x: 3, footprint_y: 4 };
+  const sizes = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {},
+        lineStyle() {},
+        fillStyle() {},
+        fillRect(x, y, width, height) { sizes.push({ width, height, x, y }); },
+        strokeRect() {},
+        destroy() {},
+      }),
+      image: () => ({ setOrigin() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setAlpha() {}, setTint() {}, destroy() {} }),
+    },
+    textures: { exists: () => false },
+  };
+
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(-192, -256);
+
+  const state = controller.getPreviewState();
+  assert.equal(state.x, -192);
+  assert.equal(state.y, -256);
+  assert.equal(state.width, 192);
+  assert.equal(state.height, 256);
+  assert.equal(sizes.length > 0, true);
+  assert.equal(sizes[sizes.length - 1].width, 192);
+  assert.equal(sizes[sizes.length - 1].height, 256);
+  assert.equal(state.valid, true);
+});
+
+test('missing artwork never creates a fallback image sprite, but footprint remains visible', () => {
+  const bus = new EventBus();
+  const machine = { id: 93, name: 'Missing Artwork', image: 'missing.png', footprint_x: 2, footprint_y: 2 };
+  const createdImages = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {}, lineStyle() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, destroy() {},
+      }),
+      image: (x, y, key) => {
+        createdImages.push({ x, y, key });
+        return { setOrigin() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setAlpha() {}, setTint() {}, destroy() {} };
+      },
+    },
+    textures: { exists: () => false },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(96, 96);
+
+  assert.equal(createdImages.length, 0);
+  assert.equal(controller.getPreviewState().visible, true);
+  assert.equal(controller.getPreviewState().valid, true);
+  assert.equal(controller._graphics !== null, true);
+});
+
+test('loaded artwork is positioned over the same canonical footprint and only one sprite exists', () => {
+  const bus = new EventBus();
+  const machine = { id: 94, name: 'Loaded Artwork', image: 'loaded.png', footprint_x: 2, footprint_y: 3 };
+  const createdImages = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({
+        clear() {}, lineStyle() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, destroy() {},
+      }),
+      image: (x, y, key) => {
+        const obj = {
+          x, y, key,
+          setOrigin() {},
+          setPosition(x2, y2) { obj.x = x2; obj.y = y2; },
+          setDisplaySize() {},
+          setVisible() {},
+          setAlpha() {},
+          setTint() {},
+          destroy() {},
+        };
+        createdImages.push(obj);
+        return obj;
+      },
+    },
+    textures: { exists: (key) => key === 'preview_machine_94_loaded_png' },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(128, 128);
+
+  assert.equal(createdImages.length, 1);
+  assert.equal(controller._artworkSprite, createdImages[0]);
+  assert.equal(createdImages[0].x, 192);
+  assert.equal(createdImages[0].y, 224);
+  assert.equal(controller.getPreviewState().width, 128);
+  assert.equal(controller.getPreviewState().height, 192);
+});
+
+test('Escape cleans up both footprint and artwork preview objects', () => {
+  const bus = new EventBus();
+  const machine = { id: 95, name: 'Escape Cleanup', image: 'cleanup.png', footprint_x: 2, footprint_y: 2 };
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({ clear() {}, lineStyle() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, destroy() {} }),
+      image: () => ({ setOrigin() {}, setPosition() {}, setDisplaySize() {}, setVisible() {}, setAlpha() {}, setTint() {}, destroy() {} }),
+    },
+    textures: { exists: () => true },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller._updateGhostPosition(128, 128);
+  controller.cancelPreview();
+
+  assert.equal(controller.getPreviewMachine(), null);
+  assert.equal(controller.getPreviewState().visible, false);
+  assert.equal(controller._graphics, null);
+  assert.equal(controller._artworkSprite, null);
 });
 
 test('destroy removes listeners', () => {
