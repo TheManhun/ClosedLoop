@@ -590,6 +590,81 @@ export default class ContextPanel {
     this._renderMachineList(this._currentResource, compatibleMachines, allMachines);
   }
 
+  _renderObjectOutputResources(payload) {
+    if (!this._el) return;
+    const meta = payload && payload.meta ? payload.meta : {};
+    const sourceObjectId = payload && payload.id != null ? Number(payload.id) : null;
+    const scenario = this.technology && this.technology.dataLoader && typeof this.technology.dataLoader.getScenarioById === 'function'
+      ? this.technology.dataLoader.getScenarioById(2)
+      : null;
+    const choices = [];
+
+    if (scenario && Array.isArray(scenario.scenario_objects)) {
+      const source = scenario.scenario_objects.find((obj) => Number(obj && obj.id) === Number(sourceObjectId));
+      const machine = source && source.machine ? source.machine : null;
+      const resources = Array.isArray(machine && machine.resources) ? machine.resources : [];
+      for (const resource of resources) {
+        const direction = String(resource && (resource.direction || resource.type || '')).toLowerCase();
+        if (direction !== 'output') continue;
+        const rid = resource && (resource.id ?? resource.resource_id ?? null);
+        if (rid == null) continue;
+        choices.push({
+          id: Number(rid),
+          resource_id: Number(rid),
+          name: resource.name || resource.display_name || `Output ${rid}`,
+          direction: 'output',
+        });
+      }
+    }
+
+    if (!choices.length) {
+      this._el.innerText = '';
+      this._el.style.display = 'block';
+      const heading = document.createElement('div');
+      heading.style.fontWeight = '700';
+      heading.style.marginBottom = '6px';
+      heading.innerText = meta.name || meta.display_name || `Object ${sourceObjectId ?? ''}`;
+      const note = document.createElement('div');
+      note.style.fontSize = '12px';
+      note.style.opacity = '0.85';
+      note.innerText = 'No output resources defined for this placed object.';
+      this._el.appendChild(heading);
+      this._el.appendChild(note);
+      return;
+    }
+
+    this._el.innerText = '';
+    const heading = document.createElement('div');
+    heading.style.fontWeight = '700';
+    heading.style.marginBottom = '6px';
+    heading.innerText = meta.name || meta.display_name || `Object ${sourceObjectId ?? ''}`;
+    this._el.appendChild(heading);
+
+    const label = document.createElement('div');
+    label.style.fontSize = '12px';
+    label.style.opacity = '0.9';
+    label.style.marginBottom = '6px';
+    label.innerText = 'Output resources';
+    this._el.appendChild(label);
+
+    for (const item of choices) {
+      const btn = this._makeActionButton(item.name, () => {
+        if (this.eventBus && typeof this.eventBus.emit === 'function') {
+          this.eventBus.emit('connection:begin', {
+            source_object_id: sourceObjectId,
+            resource_id: item.resource_id,
+            scenario,
+          });
+        }
+      });
+      btn.style.width = '100%';
+      btn.style.textAlign = 'left';
+      this._el.appendChild(btn);
+    }
+
+    this._el.style.display = 'block';
+  }
+
   _onSelectionChanged(payload) {
     try {
       if (!this._el) return;
@@ -607,6 +682,12 @@ export default class ContextPanel {
         this._catalogueSearch = '';
         this._catalogueView = 'All';
         this._renderCurrent();
+        return;
+      }
+
+      if (payload.kind === 'object') {
+        this._currentResource = null;
+        this._renderObjectOutputResources(payload);
         return;
       }
 

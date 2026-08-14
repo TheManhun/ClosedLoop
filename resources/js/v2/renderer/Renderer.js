@@ -7,6 +7,7 @@ import ScenarioObjectRenderer from './ScenarioObjectRenderer.js';
 import ScenarioMapRenderer from './ScenarioMapRenderer.js';
 import SelectionController from '../selection/SelectionController.js';
 import PlacementController from '../placement/PlacementController.js';
+import ConnectionController from '../connection/ConnectionController.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -16,6 +17,7 @@ export default class Renderer {
     this._game = null;
     this._gridRenderer = null;
     this._placementController = new PlacementController({ eventBus, cellSize: 64 });
+    this._connectionController = new ConnectionController({ eventBus });
   }
 
   _initialisePlacementController(scene, inputController) {
@@ -107,6 +109,9 @@ export default class Renderer {
           if (placementController && typeof placementController.initialise === 'function') {
             try { placementController.initialise(this, inputController); } catch (e) { /* ignore */ }
           }
+          if (this._connectionController && typeof this._connectionController.initialise === 'function') {
+            try { this._connectionController.initialise(); } catch (e) { /* ignore */ }
+          }
         }
         update() {}
       };
@@ -163,6 +168,11 @@ export default class Renderer {
     if (this._placementController) {
       try { this._placementController.destroy(); } catch (e) { /* ignore */ }
       this._placementController = null;
+    }
+
+    if (this._connectionController) {
+      try { this._connectionController.destroy(); } catch (e) { /* ignore */ }
+      this._connectionController = null;
     }
 
     // Destroy stockpile renderer if present

@@ -21,6 +21,8 @@ export default class ScenarioObjectRenderer {
       // listen for selection changes so we can highlight selected scenario objects
       this._bound.onSelectionChanged = (payload) => this._onSelectionChanged(payload);
       this.eventBus.on('selection:changed', this._bound.onSelectionChanged);
+      this._bound.onConnectionHighlightChanged = (payload) => this._onConnectionHighlightChanged(payload);
+      this.eventBus.on('connection:highlight:changed', this._bound.onConnectionHighlightChanged);
     }
 
     this._initialised = true;
@@ -239,15 +241,20 @@ export default class ScenarioObjectRenderer {
     } catch (e) {}
   }
 
-  _setSelectedHighlight(entry, enabled) {
+  _setSelectedHighlight(entry, enabled, color = 0x00ff00) {
     try {
       if (!entry) return;
       if (!this._scene || !this._scene.add) return;
       if (enabled) {
-        if (entry._selGraphic) return;
+        if (entry._selGraphic && entry._selGraphic._connColor === color) return;
+        if (entry._selGraphic) {
+          try { if (typeof entry._selGraphic.destroy === 'function') entry._selGraphic.destroy(); } catch (e) {}
+          entry._selGraphic = null;
+        }
         try {
           const g = this._scene.add.graphics();
-          try { if (typeof g.lineStyle === 'function') g.lineStyle(3, 0x00ff00, 0.95); } catch (e) {}
+          g._connColor = color;
+          try { if (typeof g.lineStyle === 'function') g.lineStyle(3, color, 0.95); } catch (e) {}
           try {
             const pad = Math.round(this.cellSize * 0.08);
             const sx = Math.round((entry.meta.x || (entry.obj && entry.obj.x) || 0) - (this.cellSize * 0.5) - pad);
@@ -267,8 +274,23 @@ export default class ScenarioObjectRenderer {
     } catch (e) {}
   }
 
+  _onConnectionHighlightChanged(payload) {
+    try {
+      const active = !!(payload && payload.active);
+      const list = Array.isArray(payload && payload.compatible_target_ids) ? payload.compatible_target_ids : [];
+      const ids = new Set(list.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+      for (const it of this._objects) {
+        const id = it && it.meta && it.meta.id != null ? Number(it.meta.id) : null;
+        const shouldEnable = active && id != null && ids.has(id);
+        this._setSelectedHighlight(it, shouldEnable, 0xfbbf24);
+      }
+    } catch (e) {}
+  }
+
   destroy() {
     try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onScenarioLoaded) this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded); } catch (e) {}
+    try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onSelectionChanged) this.eventBus.off('selection:changed', this._bound.onSelectionChanged); } catch (e) {}
+    try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onConnectionHighlightChanged) this.eventBus.off('connection:highlight:changed', this._bound.onConnectionHighlightChanged); } catch (e) {}
     this._clearObjects();
     this._scene = null;
     this._initialised = false;
