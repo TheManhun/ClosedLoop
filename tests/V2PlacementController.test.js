@@ -740,6 +740,144 @@ test('Escape cleans up both footprint and artwork preview objects', () => {
   assert.equal(controller._artworkSprite, null);
 });
 
+test('default preview rotation is 0 and R rotates 90 degrees', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 96, name: 'Rotating Preview', image: 'rotate.png', footprint_x: 2, footprint_y: 3 };
+
+  controller.initialise(makeScene());
+  bus.emit('technology:selected', { machine });
+  assert.equal(controller.getPreviewState().rotation, 0);
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 90);
+  assert.equal(controller.getPreviewState().width, 192);
+  assert.equal(controller.getPreviewState().height, 128);
+});
+
+test('repeated rotations cycle 0 90 180 270 0 and keep canonical top-left origin', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 97, name: 'Rotation Cycle', image: 'cycle.png', footprint_x: 2, footprint_y: 3 };
+
+  controller.initialise(makeScene());
+  bus.emit('technology:selected', { machine });
+  controller.updatePointerWorld({ x: 256, y: 192 });
+
+  assert.equal(controller.getPreviewState().rotation, 0);
+  assert.equal(controller.getPreviewState().x, 256);
+  assert.equal(controller.getPreviewState().y, 192);
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 90);
+  assert.equal(controller.getPreviewState().width, 192);
+  assert.equal(controller.getPreviewState().height, 128);
+  assert.equal(controller.getPreviewState().x, 256);
+  assert.equal(controller.getPreviewState().y, 192);
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 180);
+  assert.equal(controller.getPreviewState().width, 128);
+  assert.equal(controller.getPreviewState().height, 192);
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 270);
+  assert.equal(controller.getPreviewState().width, 192);
+  assert.equal(controller.getPreviewState().height, 128);
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 0);
+  assert.equal(controller.getPreviewState().width, 128);
+  assert.equal(controller.getPreviewState().height, 192);
+});
+
+test('rotation recalculates occupied cells and validity', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const machine = { id: 98, name: 'Rotate Collision', image: 'rotate-collision.png', footprint_x: 2, footprint_y: 3 };
+
+  controller.initialise(makeScene());
+  bus.emit('scenario:loaded', { scenario_objects: [{ id: 66, grid_x: 2, grid_y: 0, machine: { id: 321, footprint_x: 1, footprint_y: 1 } }] });
+  bus.emit('technology:selected', { machine });
+  controller.updatePointerWorld({ x: 0, y: 0 });
+
+  assert.equal(controller.getPreviewState().valid, true);
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 90);
+  assert.equal(controller.getPreviewState().valid, false);
+  assert.equal(controller.getPreviewState().reason, 'collision');
+
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 180);
+  assert.equal(controller.getPreviewState().valid, true);
+  assert.equal(controller.getPreviewState().reason, null);
+});
+
+test('artwork rotates and stays centred inside the rotated footprint', () => {
+  const bus = new EventBus();
+  const machine = { id: 99, name: 'Artwork Rotate', image: 'artwork-rotate.png', footprint_x: 2, footprint_y: 3 };
+  const created = [];
+  const fakeScene = {
+    input: { on: () => {}, off: () => {} },
+    events: { on: () => {}, off: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 2000, height: 2000 } } },
+    add: {
+      graphics: () => ({ clear() {}, lineStyle() {}, fillStyle() {}, fillRect() {}, strokeRect() {}, destroy() {} }),
+      image: (x, y, key) => {
+        const obj = {
+          x, y, key,
+          angle: 0,
+          setOrigin() {},
+          setPosition(x2, y2) { obj.x = x2; obj.y = y2; },
+          setDisplaySize() {},
+          setVisible() {},
+          setAlpha() {},
+          setAngle(value) { obj.angle = value; },
+          destroy() {},
+        };
+        created.push(obj);
+        return obj;
+      },
+    },
+    textures: { exists: () => true },
+  };
+
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  controller.initialise(fakeScene);
+  bus.emit('technology:selected', { machine });
+  controller.updatePointerWorld({ x: 320, y: 128 });
+
+  assert.equal(created.length, 1);
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 90);
+  assert.equal(created[0].angle, 90);
+  assert.equal(controller.getPreviewState().width, 192);
+  assert.equal(controller.getPreviewState().height, 128);
+  assert.equal(controller._artworkSprite, created[0]);
+});
+
+test('rotation resets to zero when selecting another technology and R without preview does nothing', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
+  const first = { id: 100, name: 'First Tech', image: 'first-tech.png', footprint_x: 2, footprint_y: 3 };
+  const second = { id: 101, name: 'Second Tech', image: 'second-tech.png', footprint_x: 3, footprint_y: 2 };
+
+  controller.initialise(makeScene());
+  bus.emit('technology:selected', { machine: first });
+  controller.rotatePreview();
+  controller.rotatePreview();
+  assert.equal(controller.getPreviewState().rotation, 180);
+
+  bus.emit('technology:selected', { machine: second });
+  assert.equal(controller.getPreviewState().rotation, 0);
+  assert.equal(controller.getPreviewState().width, 192);
+  assert.equal(controller.getPreviewState().height, 128);
+
+  controller.cancelPreview();
+  assert.doesNotThrow(() => controller.rotatePreview());
+  assert.equal(controller.getPreviewState().visible, false);
+});
+
 test('destroy removes listeners', () => {
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus });

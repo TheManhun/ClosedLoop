@@ -20,6 +20,7 @@ export default class PlacementController {
       visible: false,
       valid: false,
       reason: null,
+      rotation: 0,
       x: 0,
       y: 0,
       width: 0,
@@ -59,6 +60,12 @@ export default class PlacementController {
       this._bound.onKeydown = (event) => {
         if ((event && event.key === 'Escape') || (event && event.code === 'Escape')) {
           this.cancelPreview();
+          return;
+        }
+
+        const keyName = event && event.key ? String(event.key).toLowerCase() : '';
+        if (this._previewMachine && (keyName === 'r' || event?.code === 'KeyR')) {
+          this.rotatePreview();
         }
       };
       window.addEventListener('keydown', this._bound.onKeydown);
@@ -150,6 +157,7 @@ export default class PlacementController {
       visible: false,
       valid: false,
       reason: null,
+      rotation: 0,
       x: 0,
       y: 0,
       width: 0,
@@ -158,6 +166,29 @@ export default class PlacementController {
       scenarioObjectCreated: false,
     };
     this._destroyGhost();
+  }
+
+  _getEffectiveFootprint(machine = this._previewMachine, rotation = Number(this._previewState.rotation ?? 0)) {
+    const footprintX = Number(machine && (machine.footprint_x ?? machine.footprintX ?? machine.width ?? 2)) || 2;
+    const footprintY = Number(machine && (machine.footprint_y ?? machine.footprintY ?? machine.height ?? 2)) || 2;
+    const normalizedRotation = ((Number(rotation) % 360) + 360) % 360;
+    const rotated = normalizedRotation === 90 || normalizedRotation === 270;
+    return {
+      footprintX: rotated ? footprintY : footprintX,
+      footprintY: rotated ? footprintX : footprintY,
+      rotation: normalizedRotation,
+    };
+  }
+
+  rotatePreview() {
+    if (!this._previewMachine) return;
+    const currentRotation = Number(this._previewState.rotation ?? 0);
+    const nextRotation = (currentRotation + 90) % 360;
+    this._previewState = {
+      ...this._previewState,
+      rotation: nextRotation,
+    };
+    this._updateGhostPosition(this._previewState.x, this._previewState.y, true);
   }
 
   _normaliseMachineImagePath(image) {
@@ -259,6 +290,8 @@ export default class PlacementController {
     if (typeof this._artworkSprite.setVisible === 'function') this._artworkSprite.setVisible(true);
     if (typeof this._artworkSprite.setAlpha === 'function') this._artworkSprite.setAlpha(this._previewState.valid ? 0.9 : 0.75);
     if (typeof this._artworkSprite.setDisplaySize === 'function') this._artworkSprite.setDisplaySize(this._previewState.width, this._previewState.height);
+    if (typeof this._artworkSprite.setAngle === 'function') this._artworkSprite.setAngle(Number(this._previewState.rotation ?? 0));
+    else if ('angle' in this._artworkSprite) this._artworkSprite.angle = Number(this._previewState.rotation ?? 0);
   }
 
   _onScenarioLoaded(scenario) {
@@ -298,6 +331,7 @@ export default class PlacementController {
       visible: true,
       valid: true,
       reason: null,
+      rotation: 0,
       x: 0,
       y: 0,
       width: ghostWidth,
@@ -349,8 +383,7 @@ export default class PlacementController {
     }
 
     const snapped = this._snapToGrid(x, y);
-    const footprintX = Number(this._previewMachine.footprint_x ?? this._previewMachine.footprintX ?? 2) || 2;
-    const footprintY = Number(this._previewMachine.footprint_y ?? this._previewMachine.footprintY ?? 2) || 2;
+    const { footprintX, footprintY, rotation } = this._getEffectiveFootprint(this._previewMachine, this._previewState.rotation ?? 0);
     const previewWidth = footprintX * this.cellSize;
     const previewHeight = footprintY * this.cellSize;
     const worldValid = this._isValidWorldPoint(snapped.x, snapped.y, previewWidth, previewHeight);
@@ -381,6 +414,7 @@ export default class PlacementController {
       visible: true,
       valid,
       reason: collision ? 'collision' : null,
+      rotation,
       x: snapped.x,
       y: snapped.y,
       width: previewWidth,
@@ -403,10 +437,9 @@ export default class PlacementController {
       return;
     }
 
-    const width = Number(this._previewMachine.footprint_x ?? this._previewMachine.footprintX ?? 2) || 2;
-    const height = Number(this._previewMachine.footprint_y ?? this._previewMachine.footprintY ?? 2) || 2;
-    const drawWidth = Math.max(this.cellSize, width * this.cellSize);
-    const drawHeight = Math.max(this.cellSize, height * this.cellSize);
+    const { footprintX, footprintY } = this._getEffectiveFootprint(this._previewMachine, this._previewState.rotation ?? 0);
+    const drawWidth = Math.max(this.cellSize, footprintX * this.cellSize);
+    const drawHeight = Math.max(this.cellSize, footprintY * this.cellSize);
     const drawX = this._previewState.x;
     const drawY = this._previewState.y;
     const valid = !!this._previewState.valid;
@@ -467,6 +500,7 @@ export default class PlacementController {
       visible: false,
       valid: false,
       reason: null,
+      rotation: 0,
     };
     this._destroyGhost();
   }
