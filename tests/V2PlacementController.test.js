@@ -326,6 +326,121 @@ test('Escape still cancels preview normally', () => {
   assert.equal(controller.getPreviewState().reason, null);
 });
 
+test('Escape with no active preview is harmless', () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64, scenarioId: 42 });
+  const persistenceCalls = [];
+  const previousWindow = globalThis.window;
+  const listeners = {};
+
+  controller.setApiCoordinator({
+    createScenarioObject: async (payload) => {
+      persistenceCalls.push(payload);
+      return { id: 900, ...payload };
+    },
+  });
+
+  try {
+    globalThis.window = {
+      addEventListener: (eventName, handler) => {
+        listeners[eventName] = handler;
+      },
+      removeEventListener: () => {},
+    };
+
+    controller.initialise(makeScene());
+
+    assert.equal(controller.getPreviewMachine(), null);
+    assert.equal(controller.getPreviewState().visible, false);
+    assert.equal(controller._isSubmitting, false);
+
+    assert.doesNotThrow(() => {
+      if (listeners.keydown) {
+        listeners.keydown({ key: 'Escape', code: 'Escape' });
+      }
+    });
+
+    assert.equal(controller.getPreviewMachine(), null);
+    assert.equal(controller.getPreviewState().visible, false);
+    assert.equal(controller.getPreviewState().rotation, 0);
+    assert.equal(controller._isSubmitting, false);
+    assert.equal(persistenceCalls.length, 0);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
+test('Escape while placement commit is already in flight cleans local preview without aborting the started persistence request', async () => {
+  const bus = new EventBus();
+  const controller = new PlacementController({ eventBus: bus, cellSize: 64, scenarioId: 9 });
+  const machine = { id: 155, name: 'In Flight', image: 'pending.png', footprint_x: 2, footprint_y: 2 };
+  const calls = [];
+  const reloaded = [];
+  const previousWindow = globalThis.window;
+  const listeners = {};
+  let resolvePending;
+  const pending = new Promise((resolve) => {
+    resolvePending = resolve;
+  });
+
+  controller.setApiCoordinator({
+    createScenarioObject: async (payload) => {
+      calls.push(payload);
+      return pending;
+    },
+  });
+  controller.setScenarioLoader({
+    load: async (scenarioId) => {
+      reloaded.push(scenarioId);
+      return { id: scenarioId, scenario_objects: [] };
+    },
+  });
+
+  try {
+    globalThis.window = {
+      addEventListener: (eventName, handler) => {
+        listeners[eventName] = handler;
+      },
+      removeEventListener: () => {},
+    };
+
+    controller.initialise(makeScene());
+    bus.emit('technology:selected', { machine });
+    controller.updatePointerWorld({ x: 128, y: 128 });
+
+    assert.equal(controller.getPreviewMachine()?.id, 155);
+    assert.equal(controller.getPreviewState().valid, true);
+
+    const commitPromise = controller.confirmPlacement();
+
+    assert.equal(controller._isSubmitting, true);
+    assert.equal(calls.length, 1);
+
+    assert.doesNotThrow(() => {
+      if (listeners.keydown) {
+        listeners.keydown({ key: 'Escape', code: 'Escape' });
+      }
+    });
+
+    assert.equal(controller.getPreviewMachine(), null);
+    assert.equal(controller.getPreviewState().visible, false);
+    assert.equal(controller.getPreviewState().rotation, 0);
+    assert.equal(controller._isSubmitting, true);
+    assert.equal(calls.length, 1);
+
+    resolvePending({ id: 77, scenario_id: 9, machine_id: 155, grid_x: 2, grid_y: 2 });
+    await commitPromise;
+
+    assert.equal(controller._isSubmitting, false);
+    assert.equal(calls.length, 1);
+    assert.equal(reloaded.length, 1);
+    assert.equal(reloaded[0], 9);
+    assert.equal(controller.getPreviewState().scenarioObjectCreated, true);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
 test('no permanent placement path exists during collision preview', () => {
   const bus = new EventBus();
   const controller = new PlacementController({ eventBus: bus, cellSize: 64 });
