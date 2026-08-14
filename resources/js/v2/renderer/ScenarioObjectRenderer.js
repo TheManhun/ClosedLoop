@@ -35,9 +35,26 @@ export default class ScenarioObjectRenderer {
 
       for (let i = 0; i < items.length; i++) {
         const so = items[i];
-        const hasPos = so && (so.position_x != null || so.position_y != null);
-        const x = hasPos ? Number(so.position_x) || 0 : 0;
-        const y = hasPos ? Number(so.position_y) || 0 : 0;
+        const machine = so && (so.machine || null);
+        const footprintX = Number(machine && (machine.footprint_x ?? machine.footprintX ?? machine.width ?? 1)) || 1;
+        const footprintY = Number(machine && (machine.footprint_y ?? machine.footprintY ?? machine.height ?? 1)) || 1;
+        const gridX = Number(so && (so.grid_x ?? so.gridX ?? null));
+        const gridY = Number(so && (so.grid_y ?? so.gridY ?? null));
+
+        let worldLeft = 0;
+        let worldTop = 0;
+        if (Number.isFinite(gridX) && Number.isFinite(gridY)) {
+          worldLeft = gridX * this.cellSize;
+          worldTop = gridY * this.cellSize;
+        } else {
+          const legacyX = Number(so && (so.position_x ?? so.x ?? 0)) || 0;
+          const legacyY = Number(so && (so.position_y ?? so.y ?? 0)) || 0;
+          worldLeft = Math.floor((legacyX - ((footprintX * this.cellSize) / 2)) / this.cellSize) * this.cellSize;
+          worldTop = Math.floor((legacyY - ((footprintY * this.cellSize) / 2)) / this.cellSize) * this.cellSize;
+        }
+
+        const x = worldLeft + (footprintX * this.cellSize) / 2;
+        const y = worldTop + (footprintY * this.cellSize) / 2;
 
         const imgPath = so && so.machine && so.machine.image ? so.machine.image : null;
         const texKey = `scenario_obj_img_${so && so.id || i}`;

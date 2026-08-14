@@ -8,6 +8,30 @@ export default class DataLoader {
     // Prepare caches or adapters if needed.
   }
 
+  _normalizeScenarioObject(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const machine = obj.machine || {};
+    const footprintX = Number(machine.footprint_x ?? machine.footprintX ?? obj.footprint_x ?? obj.footprintX ?? 1) || 1;
+    const footprintY = Number(machine.footprint_y ?? machine.footprintY ?? obj.footprint_y ?? obj.footprintY ?? 1) || 1;
+
+    const explicitGridX = Number(obj.grid_x ?? obj.gridX ?? Number.NaN);
+    const explicitGridY = Number(obj.grid_y ?? obj.gridY ?? Number.NaN);
+    const legacyX = Number(obj.position_x ?? obj.positionX ?? obj.x ?? 0);
+    const legacyY = Number(obj.position_y ?? obj.positionY ?? obj.y ?? 0);
+    const cellSize = 64;
+
+    const gridX = Number.isFinite(explicitGridX) ? explicitGridX : Math.floor((legacyX - ((footprintX * cellSize) / 2)) / cellSize);
+    const gridY = Number.isFinite(explicitGridY) ? explicitGridY : Math.floor((legacyY - ((footprintY * cellSize) / 2)) / cellSize);
+
+    return {
+      ...obj,
+      grid_x: gridX,
+      grid_y: gridY,
+      position_x: legacyX,
+      position_y: legacyY,
+    };
+  }
+
   async loadScenario(id) {
     const res = await this.api.fetchScenario(id);
     // Expect a single scenario object. Store canonical scenarios in a map.
@@ -15,6 +39,10 @@ export default class DataLoader {
     // Defensive: if API returned an array, take first
     const scenario = Array.isArray(res) ? (res[0] || null) : res;
     if (!scenario) throw new Error('DataLoader.loadScenario: unexpected empty response');
+
+    if (Array.isArray(scenario.scenario_objects)) {
+      scenario.scenario_objects = scenario.scenario_objects.map((obj) => this._normalizeScenarioObject(obj));
+    }
 
     // Link scenario_resources to canonical resources where possible
     if (Array.isArray(scenario.scenario_resources)) {
