@@ -10,6 +10,56 @@ import ToolboxController from './toolbox/ToolboxController.js';
 import ScenarioLoader from './scenarios/ScenarioLoader.js';
 import App from './App.js';
 
+export async function autoSelectPlacedObject({ eventBus, scenarioLoader }, created, scenarioId = null) {
+  if (!eventBus || typeof eventBus.emit !== 'function') return false;
+  if (!created || created.id == null) return false;
+
+  const resolvedScenarioId = Number.isFinite(Number(scenarioId ?? created.scenario_id))
+    ? Number(scenarioId ?? created.scenario_id)
+    : null;
+
+  if (!resolvedScenarioId || !scenarioLoader || typeof scenarioLoader.load !== 'function') {
+    return false;
+  }
+
+  try {
+    const scenario = await scenarioLoader.load(resolvedScenarioId);
+    const match = Array.isArray(scenario && scenario.scenario_objects)
+      ? scenario.scenario_objects.find((obj) => Number(obj && obj.id) === Number(created.id))
+      : null;
+
+    if (!match) {
+      eventBus.emit('placement:selection:skipped', {
+        created,
+        scenario_id: resolvedScenarioId,
+        reason: 'matching-object-not-found',
+      });
+      return false;
+    }
+
+    eventBus.emit('selection:request', {
+      kind: 'object',
+      id: Number(match.id),
+      instance_key: match.object_key ?? null,
+      meta: match,
+      world: {
+        x: Number(match.grid_x ?? 0) * 64,
+        y: Number(match.grid_y ?? 0) * 64,
+      },
+      _pointerId: null,
+    });
+
+    return true;
+  } catch (error) {
+    eventBus.emit('placement:failed', {
+      created,
+      scenario_id: resolvedScenarioId,
+      error,
+    });
+    return false;
+  }
+}
+
 export async function run() {
   // Bootstrap sequence (Stage 0) — no gameplay or simulation implementation here.
   const eventBus = new EventBus();
@@ -17,6 +67,7 @@ export async function run() {
 
   const api = new ApiCoordinator({ eventBus });
   const dataLoader = new DataLoader({ apiCoordinator: api });
+  const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
 
   eventBus.on('placement:confirm', async (payload) => {
     if (!payload || !payload.scenario_id || !payload.machine_id) return;
@@ -25,8 +76,7 @@ export async function run() {
       if (eventBus && typeof eventBus.emit === 'function') {
         eventBus.emit('placement:committed', { ...payload, created });
       }
-      const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
-      await scenarioLoader.load(payload.scenario_id);
+      await autoSelectPlacedObject({ eventBus, scenarioLoader }, created, payload.scenario_id);
     } catch (error) {
       if (eventBus && typeof eventBus.emit === 'function') {
         eventBus.emit('placement:failed', { payload, error });
@@ -45,7 +95,6 @@ export async function run() {
     renderer._placementController.setRuntimeEventConsumerInstalled(true);
   }
 
-  const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
   const uiManager = new UIManager({ eventBus, renderer, toolbox, statusProviders: { eventBus, api, dataLoader, technology, simulation, game: gameEngine, scenarioLoader } });
 
   // Create app and let App lifecycle own startup loading via ScenarioLoader.

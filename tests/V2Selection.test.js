@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import StockpileRenderer from '../resources/js/v2/renderer/StockpileRenderer.js';
 import ScenarioObjectRenderer from '../resources/js/v2/renderer/ScenarioObjectRenderer.js';
 import SelectionController from '../resources/js/v2/selection/SelectionController.js';
+import { autoSelectPlacedObject } from '../resources/js/v2/main.js';
 
 function makeMockScene() {
   const created = [];
@@ -180,6 +181,76 @@ test('Scenario reload clears/destroys stale selection visuals and destroy remove
   // ensure controllers can be destroyed without throwing
   assert.doesNotThrow(() => r.destroy());
   assert.doesNotThrow(() => sc.destroy());
+});
+
+test('autoSelectPlacedObject reloads before selecting the exact placed object ID', async () => {
+  const eb = makeEventBus();
+  const order = [];
+  const scenarioLoader = {
+    load: async (scenarioId) => {
+      order.push(`load:${scenarioId}`);
+      return {
+        id: scenarioId,
+        scenario_objects: [
+          { id: 11, object_key: 'older', machine_id: 7, grid_x: 1, grid_y: 1, rotation: 0 },
+          { id: 88, object_key: 'newer', machine_id: 7, grid_x: 3, grid_y: 4, rotation: 90 },
+        ],
+      };
+    },
+  };
+
+  const captured = [];
+  eb.on('selection:request', (payload) => {
+    captured.push(payload);
+    order.push('select');
+  });
+
+  const created = { id: 88, scenario_id: 9, object_key: 'newer', machine_id: 7, grid_x: 3, grid_y: 4, rotation: 90 };
+  const result = await autoSelectPlacedObject({ eventBus: eb, scenarioLoader }, created, 9);
+
+  assert.equal(result, true);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].id, 88);
+  assert.equal(captured[0].instance_key, 'newer');
+  assert.deepEqual(order, ['load:9', 'select']);
+});
+
+test('autoSelectPlacedObject does not fall back to machine_id or stale objects when the created ID is missing after reload', async () => {
+  const eb = makeEventBus();
+  const captured = [];
+  eb.on('selection:request', (payload) => captured.push(payload));
+
+  const scenarioLoader = {
+    load: async () => ({
+      id: 9,
+      scenario_objects: [
+        { id: 11, object_key: 'older', machine_id: 7, grid_x: 1, grid_y: 1, rotation: 0 },
+      ],
+    }),
+  };
+
+  const created = { id: 88, scenario_id: 9, object_key: 'newer', machine_id: 7, grid_x: 3, grid_y: 4, rotation: 90 };
+  const result = await autoSelectPlacedObject({ eventBus: eb, scenarioLoader }, created, 9);
+
+  assert.equal(result, false);
+  assert.equal(captured.length, 0);
+});
+
+test('autoSelectPlacedObject does not auto-select on failed placement', async () => {
+  const eb = makeEventBus();
+  const captured = [];
+  eb.on('selection:request', (payload) => captured.push(payload));
+
+  const scenarioLoader = {
+    load: async () => {
+      throw new Error('reload should not be attempted when the insert fails');
+    },
+  };
+
+  const result = await autoSelectPlacedObject({ eventBus: eb, scenarioLoader }, null, 9);
+
+  assert.equal(result, false);
+  assert.equal(captured.length, 0);
 });
 
 test('Resource -> Object -> Resource -> ground-clear selection transitions', async () => {
