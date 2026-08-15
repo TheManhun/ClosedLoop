@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import SelectionController from '../resources/js/v2/selection/SelectionController.js';
+import StockpileRenderer from '../resources/js/v2/renderer/StockpileRenderer.js';
 
 // Minimal mock EventBus to capture emits and allow on/off
 class MockEventBus {
@@ -108,4 +109,81 @@ test('SelectionController: same click cycle does not clear immediately (suppress
   // Should NOT have emitted a ground selection during the same cycle
   const recentGrounds = bus.emits.filter(e => e.k === 'selection:changed' && e.v && e.v.kind === 'ground');
   assert.equal(recentGrounds.length, 0, 'expected no immediate ground selection during same click cycle');
+});
+
+test('StockpileRenderer: selectable stockpile visual registers as a selection target for resource clicks', () => {
+  const bus = new MockEventBus();
+
+  class MockGraphics {
+    constructor() {
+      this._selectionTarget = false;
+      this._handlers = {};
+    }
+    setInteractive() { return this; }
+    on(name, handler) {
+      this._handlers[name] = handler;
+      return this;
+    }
+    off(name) {
+      delete this._handlers[name];
+      return this;
+    }
+    destroy() { return this; }
+    setDepth() { return this; }
+  }
+
+  class MockZone {
+    constructor() {
+      this._selectionTarget = false;
+      this._handlers = {};
+    }
+    setInteractive() { return this; }
+    on(name, handler) {
+      this._handlers[name] = handler;
+      return this;
+    }
+    off(name) {
+      delete this._handlers[name];
+      return this;
+    }
+    destroy() { return this; }
+  }
+
+  const scene = {
+    add: {
+      graphics: () => new MockGraphics(),
+      zone: () => new MockZone(),
+      text: () => ({ destroy() {}, setDepth() {}, setOrigin() {}, setPosition() {} }),
+    },
+    textures: { exists: () => false },
+    events: {},
+    load: {
+      image: () => {},
+      once: () => {},
+      start: () => {},
+    },
+    scale: { once: () => {} },
+    cameras: { main: { worldView: { x: 0, y: 0, width: 800, height: 600 } } },
+    input: { on: () => {}, off: () => {} },
+  };
+
+  const renderer = new StockpileRenderer({ eventBus: bus, cellSize: 64 });
+  renderer.initialise(scene);
+  renderer._onScenarioLoaded({
+    scenario_resources: [{
+      id: 12,
+      resource_id: 99,
+      selectable: true,
+      resource: { name: 'Farm Waste', visual_type: 'generic' },
+      display_name: 'Farm Waste',
+      current_quantity: 25,
+      initial_quantity: 25,
+      unit: 't',
+    }],
+  });
+
+  assert.equal(renderer._stockpiles.length, 1);
+  assert.equal(renderer._stockpiles[0].obj._selectionTarget, true, 'expected stockpile visual to register selection target');
+  assert.equal(renderer._stockpiles[0].hitZone._selectionTarget, true, 'expected stockpile hit zone to register selection target');
+  assert.equal(renderer._stockpiles[0].obj._handlers.pointerdown ? true : false, true, 'expected object to be interactive');
 });

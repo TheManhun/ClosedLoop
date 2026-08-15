@@ -687,7 +687,21 @@ export default class ContextPanel {
 
       if (payload.kind === 'object') {
         this._currentResource = null;
-        this._renderObjectOutputResources(payload);
+        this._el.innerText = '';
+        this._el.style.display = 'block';
+        const header = document.createElement('div');
+        header.style.fontWeight = '700';
+        header.style.marginBottom = '6px';
+        header.innerText = payload.meta && (payload.meta.name || payload.meta.object_key || `Object ${payload.id ?? ''}`) || `Object ${payload.id ?? ''}`;
+        this._el.appendChild(header);
+
+        const details = document.createElement('div');
+        details.style.fontSize = '12px';
+        details.style.opacity = '0.85';
+        const machineName = payload.meta && payload.meta.machine && payload.meta.machine.name ? payload.meta.machine.name : null;
+        const resourceCount = payload.meta && payload.meta.machine && Array.isArray(payload.meta.machine.resources) ? payload.meta.machine.resources.length : 0;
+        details.innerText = machineName ? `${machineName} • ${resourceCount} resource slots` : `Scenario object ${payload.id ?? ''}`;
+        this._el.appendChild(details);
         return;
       }
 

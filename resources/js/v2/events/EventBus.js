@@ -20,7 +20,18 @@ export default class EventBus {
   emit(event, payload) {
     const set = this.listeners.get(event);
     if (!set) return;
-    for (const h of Array.from(set)) h(payload);
+    for (const h of Array.from(set)) {
+      try {
+        const result = h(payload);
+        if (result && typeof result.then === 'function') {
+          result.catch(() => {
+            // keep the unhandled rejection visible for diagnosis; EventBus intentionally does not swallow it
+          });
+        }
+      } catch (error) {
+        // swallow synchronous listener exceptions to preserve the existing event loop behavior
+      }
+    }
   }
 
   destroy() {

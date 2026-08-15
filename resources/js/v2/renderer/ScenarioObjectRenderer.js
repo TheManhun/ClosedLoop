@@ -8,6 +8,7 @@ export default class ScenarioObjectRenderer {
     this._initialised = false;
     this._bound = {};
     this._objects = []; // { obj, texKey, meta }
+    this._connectionModeActive = false;
   }
 
   initialise(scene) {
@@ -23,6 +24,10 @@ export default class ScenarioObjectRenderer {
       this.eventBus.on('selection:changed', this._bound.onSelectionChanged);
       this._bound.onConnectionHighlightChanged = (payload) => this._onConnectionHighlightChanged(payload);
       this.eventBus.on('connection:highlight:changed', this._bound.onConnectionHighlightChanged);
+      this._bound.onConnectionModeChanged = (payload) => {
+        this._connectionModeActive = !!(payload && payload.active);
+      };
+      this.eventBus.on('connection:mode:changed', this._bound.onConnectionModeChanged);
     }
 
     this._initialised = true;
@@ -97,9 +102,35 @@ export default class ScenarioObjectRenderer {
     }
   }
 
+  _getFootprintDimensions(so) {
+    const machine = so && (so.machine || null);
+    const footprintX = Number(machine && (machine.footprint_x ?? machine.footprintX ?? machine.width ?? 1)) || 1;
+    const footprintY = Number(machine && (machine.footprint_y ?? machine.footprintY ?? machine.height ?? 1)) || 1;
+    return {
+      width: footprintX * this.cellSize,
+      height: footprintY * this.cellSize,
+      footprintX,
+      footprintY,
+    };
+  }
+
+  _getArtworkFitScale(so, sourceWidth, sourceHeight) {
+    if (!Number.isFinite(Number(sourceWidth)) || !Number.isFinite(Number(sourceHeight)) || Number(sourceWidth) <= 0 || Number(sourceHeight) <= 0) {
+      return 1;
+    }
+    const { width: footprintWidth, height: footprintHeight } = this._getFootprintDimensions(so);
+    const targetWidth = footprintWidth * 0.85;
+    const targetHeight = footprintHeight * 0.85;
+    return Math.min(targetWidth / Number(sourceWidth), targetHeight / Number(sourceHeight));
+  }
+
   _createScenarioObject(so, x, y, texKey, preferImage) {
     if (!this._scene || !this._scene.add) return;
-    const size = Math.max(32, Math.floor(this.cellSize * 1.2));
+    const footprint = this._getFootprintDimensions(so);
+    const footprintWidth = footprint.width;
+    const footprintHeight = footprint.height;
+    const hitZoneWidth = Math.max(32, footprintWidth);
+    const hitZoneHeight = Math.max(32, footprintHeight);
     let go = null;
     let createdAsImage = false;
     try {
@@ -108,16 +139,18 @@ export default class ScenarioObjectRenderer {
           const img = this._scene.add.image(Math.round(x), Math.round(y), texKey);
           if (typeof img.setOrigin === 'function') img.setOrigin(0.5, 0.5);
           if (typeof img.setDepth === 'function') img.setDepth(20);
-          // fit to sensible size preserving aspect
           try {
             const iw = img.width || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].width) || null;
             const ih = img.height || (img.texture && img.texture.source && img.texture.source[0] && img.texture.source[0].height) || null;
             if (iw && ih) {
-              const scale = Math.min(size / iw, size / ih);
-              if (typeof img.setScale === 'function') img.setScale(scale);
-              else if (typeof img.setDisplaySize === 'function') img.setDisplaySize(Math.round(iw * scale), Math.round(ih * scale));
+              const scale = this._getArtworkFitScale(so, iw, ih);
+              if (typeof img.setDisplaySize === 'function') {
+                img.setDisplaySize(Math.round(iw * scale), Math.round(ih * scale));
+              } else if (typeof img.setScale === 'function') {
+                img.setScale(scale);
+              }
             } else if (typeof img.setDisplaySize === 'function') {
-              img.setDisplaySize(size, size);
+              img.setDisplaySize(Math.round(footprintWidth * 0.85), Math.round(footprintHeight * 0.85));
             }
           } catch (e) {}
           go = img; createdAsImage = true;
@@ -130,7 +163,7 @@ export default class ScenarioObjectRenderer {
       try {
         const g = this._scene.add.graphics();
         if (typeof g.fillStyle === 'function') g.fillStyle(0x666666, 1);
-        if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - size / 2), Math.round(y - size / 2), size, size);
+        if (typeof g.fillRect === 'function') g.fillRect(Math.round(x - footprintWidth / 2), Math.round(y - footprintHeight / 2), footprintWidth, footprintHeight);
         if (typeof g.setDepth === 'function') g.setDepth(20);
         go = g;
       } catch (e) { go = null; }
@@ -157,12 +190,30 @@ export default class ScenarioObjectRenderer {
     try {
       if (this._scene && this._scene.add && typeof this._scene.add.zone === 'function') {
         try {
-          hitZone = this._scene.add.zone(Math.round(x), Math.round(y), size, size);
+          hitZone = this._scene.add.zone(Math.round(x), Math.round(y), hitZoneWidth, hitZoneHeight);
           if (hitZone && typeof hitZone.setInteractive === 'function') {
             hitZone.setInteractive();
             try { if (selectable) hitZone._selectionTarget = true; } catch (e) {}
+            try { if (selectable) hitZone.on('pointerover', () => {
+              if (!this._connectionModeActive) return;
+              if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                this.eventBus.emit('connection:target:hover', { scenario_object_id: meta.id ?? null });
+              }
+            }); } catch (e) {}
+            try { if (selectable) hitZone.on('pointerout', () => {
+              if (!this._connectionModeActive) return;
+              if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                this.eventBus.emit('connection:target:clear', { scenario_object_id: meta.id ?? null });
+              }
+            }); } catch (e) {}
             try { if (selectable) hitZone.on('pointerdown', (pointer) => {
               try {
+                if (this._connectionModeActive) {
+                  if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                    this.eventBus.emit('connection:target:clicked', { scenario_object_id: meta.id ?? null, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) });
+                  }
+                  return;
+                }
                 if (this.eventBus && typeof this.eventBus.emit === 'function') {
                   const payload = { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
                   this.eventBus.emit('selection:request', payload);
@@ -172,15 +223,25 @@ export default class ScenarioObjectRenderer {
           } else {
             // fallback: attach to visual if interactive
             if (go && typeof go.setInteractive === 'function') {
+              try { go.setInteractive(); if (selectable) go.on('pointerover', () => { if (!this._connectionModeActive) return; if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:hover', { scenario_object_id: meta.id ?? null }); }); } catch (e) {}
+              try { go.setInteractive(); if (selectable) go.on('pointerout', () => { if (!this._connectionModeActive) return; if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:clear', { scenario_object_id: meta.id ?? null }); }); } catch (e) {}
               try { go.setInteractive(); if (selectable) go.on('pointerdown', (pointer) => {
-                try { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); } catch (e) {}
+                try {
+                  if (this._connectionModeActive) {
+                    if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:clicked', { scenario_object_id: meta.id ?? null, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) });
+                    return;
+                  }
+                  if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) });
+                } catch (e) {}
               }); } catch (e) {}
             }
           }
         } catch (e) { hitZone = null; }
       } else {
         if (go && typeof go.setInteractive === 'function') {
-          try { go.setInteractive(); go.on('pointerdown', (pointer) => { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); }); } catch (e) {}
+          try { go.setInteractive(); go.on('pointerover', () => { if (!this._connectionModeActive) return; if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:hover', { scenario_object_id: meta.id ?? null }); }); } catch (e) {}
+          try { go.setInteractive(); go.on('pointerout', () => { if (!this._connectionModeActive) return; if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:clear', { scenario_object_id: meta.id ?? null }); }); } catch (e) {}
+          try { go.setInteractive(); go.on('pointerdown', (pointer) => { if (this._connectionModeActive) { if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('connection:target:clicked', { scenario_object_id: meta.id ?? null, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); return; } if (this.eventBus && typeof this.eventBus.emit === 'function') this.eventBus.emit('selection:request', { kind: 'object', id: meta.id ?? null, instance_key: meta.object_key ?? null, meta: meta, world: { x: meta.x, y: meta.y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) }); }); } catch (e) {}
         }
       }
     } catch (e) {}
@@ -291,6 +352,7 @@ export default class ScenarioObjectRenderer {
     try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onScenarioLoaded) this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded); } catch (e) {}
     try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onSelectionChanged) this.eventBus.off('selection:changed', this._bound.onSelectionChanged); } catch (e) {}
     try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onConnectionHighlightChanged) this.eventBus.off('connection:highlight:changed', this._bound.onConnectionHighlightChanged); } catch (e) {}
+    try { if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onConnectionModeChanged) this.eventBus.off('connection:mode:changed', this._bound.onConnectionModeChanged); } catch (e) {}
     this._clearObjects();
     this._scene = null;
     this._initialised = false;

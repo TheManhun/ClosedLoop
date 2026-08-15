@@ -211,6 +211,12 @@ export default class StockpileRenderer {
     const hoverHandlers = { over: null, out: null };
 
     const selectable = (sr && (typeof sr.selectable !== 'undefined')) ? !!sr.selectable : true;
+    try {
+      if (selectable && go) go._selectionTarget = true;
+      if (selectable && go && typeof go.setInteractive === 'function') {
+        try { go.setInteractive(); } catch (e) {}
+      }
+    } catch (e) {}
 
     const createHoverCard = (srLocal, px, py) => {
       const name = (srLocal && (srLocal.display_name || (srLocal.resource && srLocal.resource.name))) || 'Resource';
@@ -325,6 +331,7 @@ export default class StockpileRenderer {
             if (hitZone && typeof hitZone.setInteractive === 'function') {
             hitZone.setInteractive();
             try { if (selectable) hitZone._selectionTarget = true; } catch (e) {}
+            if (selectable && go) { try { go._selectionTarget = true; } catch (e) {} }
             const overFn = makeOver(sr, x, y);
             const outFn = makeOut();
             try { hitZone.on('pointerover', overFn); } catch (e) {}
@@ -338,6 +345,16 @@ export default class StockpileRenderer {
                 }
               } catch (e) {}
             }); } catch (e) {}
+            if (selectable && go && typeof go.on === 'function') {
+              try { go.on('pointerdown', (pointer) => {
+                try {
+                  if (this.eventBus && typeof this.eventBus.emit === 'function') {
+                    const payload = { kind: 'resource', id: sr && (sr.id ?? null), instance_key: sr && (sr.instance_key ?? null), meta: sr, world: { x, y }, _pointerId: pointer && (pointer.id ?? pointer.pointerId ?? null) };
+                    this.eventBus.emit('selection:request', payload);
+                  }
+                } catch (e) {}
+              }); } catch (e) {}
+            }
             hoverHandlers.over = overFn;
             hoverHandlers.out = outFn;
           } else {

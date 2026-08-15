@@ -8,6 +8,8 @@ import ScenarioMapRenderer from './ScenarioMapRenderer.js';
 import SelectionController from '../selection/SelectionController.js';
 import PlacementController from '../placement/PlacementController.js';
 import ConnectionController from '../connection/ConnectionController.js';
+import ConnectionPreviewRenderer from '../connection/ConnectionPreviewRenderer.js';
+import ConnectionPortRenderer from '../connection/ConnectionPortRenderer.js';
 
 export default class Renderer {
   constructor({ eventBus, mountId = 'closed-loop-v2-canvas' } = {}) {
@@ -18,6 +20,8 @@ export default class Renderer {
     this._gridRenderer = null;
     this._placementController = new PlacementController({ eventBus, cellSize: 64 });
     this._connectionController = new ConnectionController({ eventBus });
+    this._connectionPreviewRenderer = new ConnectionPreviewRenderer({ eventBus, cellSize: 64 });
+    this._connectionPortRenderer = new ConnectionPortRenderer({ eventBus, cellSize: 64 });
   }
 
   _initialisePlacementController(scene, inputController) {
@@ -25,6 +29,24 @@ export default class Renderer {
     if (!placementController || typeof placementController.initialise !== 'function') return;
     if (typeof placementController.isInitialised === 'function' && placementController.isInitialised()) return;
     placementController.initialise(scene, inputController);
+  }
+
+  _initialiseConnectionComponents(scene, inputController) {
+    const connectionController = this._connectionController;
+    if (connectionController && typeof connectionController.initialise === 'function') {
+      if (typeof connectionController.isInitialised === 'function' && connectionController.isInitialised()) return;
+      connectionController.initialise();
+    }
+
+    const connectionPreviewRenderer = this._connectionPreviewRenderer;
+    if (connectionPreviewRenderer && typeof connectionPreviewRenderer.initialise === 'function') {
+      connectionPreviewRenderer.initialise(scene, inputController);
+    }
+
+    const connectionPortRenderer = this._connectionPortRenderer;
+    if (connectionPortRenderer && typeof connectionPortRenderer.initialise === 'function') {
+      connectionPortRenderer.initialise(scene);
+    }
   }
 
   initialise() {
@@ -57,6 +79,9 @@ export default class Renderer {
       const gridRenderer = this._gridRenderer;
       const inputController = this._inputController;
       const placementController = this._placementController;
+      const connectionController = this._connectionController;
+      const connectionPreviewRenderer = this._connectionPreviewRenderer;
+      const connectionPortRenderer = this._connectionPortRenderer;
 
       const stockpileRenderer = new StockpileRenderer({ eventBus: this.eventBus, cellSize: gridRenderer.cellSize || 64 });
       this._stockpileRenderer = stockpileRenderer;
@@ -109,8 +134,14 @@ export default class Renderer {
           if (placementController && typeof placementController.initialise === 'function') {
             try { placementController.initialise(this, inputController); } catch (e) { /* ignore */ }
           }
-          if (this._connectionController && typeof this._connectionController.initialise === 'function') {
-            try { this._connectionController.initialise(); } catch (e) { /* ignore */ }
+          if (connectionController && typeof connectionController.initialise === 'function') {
+            try { connectionController.initialise(); } catch (e) { /* ignore */ }
+          }
+          if (connectionPreviewRenderer && typeof connectionPreviewRenderer.initialise === 'function') {
+            try { connectionPreviewRenderer.initialise(this, inputController); } catch (e) { /* ignore */ }
+          }
+          if (connectionPortRenderer && typeof connectionPortRenderer.initialise === 'function') {
+            try { connectionPortRenderer.initialise(this); } catch (e) { /* ignore */ }
           }
         }
         update() {}
@@ -173,6 +204,16 @@ export default class Renderer {
     if (this._connectionController) {
       try { this._connectionController.destroy(); } catch (e) { /* ignore */ }
       this._connectionController = null;
+    }
+
+    if (this._connectionPreviewRenderer) {
+      try { this._connectionPreviewRenderer.destroy(); } catch (e) { /* ignore */ }
+      this._connectionPreviewRenderer = null;
+    }
+
+    if (this._connectionPortRenderer) {
+      try { this._connectionPortRenderer.destroy(); } catch (e) { /* ignore */ }
+      this._connectionPortRenderer = null;
     }
 
     // Destroy stockpile renderer if present

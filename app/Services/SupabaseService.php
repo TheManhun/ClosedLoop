@@ -290,7 +290,7 @@ class SupabaseService
     {
         // Request fields: id,stable_key,name,population,reference_year,data_status,
         // and nested scenario_resources with joined resources fields.
-        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,map_image,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type,resource_transport_classes(transport_class))),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,grid_x,grid_y,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image,footprint_x,footprint_y)),scenario_connections(id,scenario_id,source_object_id,target_object_id,resource_id,status,created_at,updated_at)');
+        $select = rawurlencode('id,stable_key,name,population,reference_year,data_status,map_image,scenario_resources(id,scenario_id,resource_id,instance_key,display_name,initial_quantity,current_quantity,unit,sort_order,environmental_impact_score,impact_metadata,fixed,selectable,notes,resources(id,stable_key,name,category,unit,image,physical_state,is_pollutant,visual_type,resource_transport_classes(transport_class))),scenario_objects(id,scenario_id,object_key,object_type,name,machine_id,grid_x,grid_y,position_x,position_y,rotation,fixed,selectable,object_config,notes,machines(id,stable_key,name,category,image,footprint_x,footprint_y,machine_resources(direction,amount,unit,resources(id,name,description,category,unit,image,physical_state,resource_transport_classes(transport_class))))),scenario_connections(id,scenario_id,source_object_id,target_object_id,resource_id,status,created_at,updated_at)');
         $url = $this->baseUrl.'/rest/v1/scenarios?id=eq.'.rawurlencode((string) $id).'&select='.$select;
         try {
             $resp = Http::withHeaders($this->headers(true))
@@ -399,6 +399,8 @@ class SupabaseService
                         $objConf = (object) [];
                     }
 
+                    $machinePayload = $machinesObj ? $this->normalizeMachineResources($machinesObj) : null;
+
                     $out['scenario_objects'][] = [
                         'id' => $so['id'] ?? null,
                         'scenario_id' => $so['scenario_id'] ?? null,
@@ -415,14 +417,15 @@ class SupabaseService
                         'selectable' => isset($so['selectable']) ? boolval($so['selectable']) : null,
                         'object_config' => $objConf,
                         'notes' => $so['notes'] ?? null,
-                        'machine' => $machinesObj ? [
-                            'id' => $machinesObj['id'] ?? null,
-                            'stable_key' => $machinesObj['stable_key'] ?? null,
-                            'name' => $machinesObj['name'] ?? null,
-                            'category' => $machinesObj['category'] ?? null,
-                            'image' => $machinesObj['image'] ?? null,
-                            'footprint_x' => $machinesObj['footprint_x'] ?? null,
-                            'footprint_y' => $machinesObj['footprint_y'] ?? null,
+                        'machine' => $machinePayload ? [
+                            'id' => $machinePayload['id'] ?? null,
+                            'stable_key' => $machinePayload['stable_key'] ?? null,
+                            'name' => $machinePayload['name'] ?? null,
+                            'category' => $machinePayload['category'] ?? null,
+                            'image' => $machinePayload['image'] ?? null,
+                            'footprint_x' => $machinePayload['footprint_x'] ?? null,
+                            'footprint_y' => $machinePayload['footprint_y'] ?? null,
+                            'resources' => $machinePayload['resources'] ?? [],
                         ] : null,
                     ];
                 }
@@ -464,6 +467,9 @@ class SupabaseService
 
         try {
             $resp = Http::withHeaders($this->headers(true))
+                ->withHeaders([
+                    'Prefer' => 'return=representation',
+                ])
                 ->timeout(15)
                 ->post($url, $normalized)
                 ->throw();

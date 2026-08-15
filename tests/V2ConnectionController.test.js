@@ -106,6 +106,29 @@ test('output-resource intent enters connection mode', () => {
   assert.ok(state.compatible_target_ids.includes(11));
 });
 
+test('output port selection starts connection mode with canonical source and resource metadata', () => {
+  const bus = new MockEventBus();
+  const controller = new ConnectionController({ eventBus: bus });
+  controller.initialise();
+
+  bus.emit('connection:port:output:selected', {
+    scenario_object_id: 10,
+    machine_id: 3,
+    resource_id: 16,
+    direction: 'output',
+    transport_classes: ['water'],
+    world: { x: 640, y: 256 },
+    scenario: makeScenario(),
+  });
+
+  const state = controller.getState();
+  assert.equal(state.active, true);
+  assert.equal(state.source_object_id, 10);
+  assert.equal(state.resource_id, 16);
+  assert.ok(state.compatible_target_ids.includes(11));
+  assert.equal(controller.getState().target_object_id, null);
+});
+
 test('source object ID is the placed scenario_objects.id, not machine_id', () => {
   const bus = new MockEventBus();
   const controller = new ConnectionController({ eventBus: bus });

@@ -15,6 +15,57 @@ beforeEach(function () {
     ]);
 });
 
+it('requests the inserted scenario object payload from Supabase so the placement flow can reload immediately', function () {
+    Http::fake([
+        'https://example.supabase.co/rest/v1/scenario_objects*' => function ($request) {
+            expect($request->hasHeader('Prefer'))->toBeTrue()
+                ->and($request->header('Prefer'))->toContain('return=representation');
+
+            return Http::response([
+                [
+                    'id' => 77,
+                    'scenario_id' => 2,
+                    'object_type' => 'machine',
+                    'object_key' => 'machine_2_4_5_123',
+                    'name' => 'Anaerobic Digester',
+                    'machine_id' => 2,
+                    'grid_x' => 4,
+                    'grid_y' => 5,
+                    'position_x' => 128,
+                    'position_y' => 160,
+                    'rotation' => 0,
+                    'fixed' => true,
+                    'selectable' => true,
+                    'object_config' => [],
+                    'notes' => null,
+                ],
+            ], 201);
+        },
+    ]);
+
+    $service = new SupabaseService();
+    $created = $service->createScenarioObject(2, [
+        'scenario_id' => 2,
+        'object_type' => 'machine',
+        'object_key' => 'machine_2_4_5_123',
+        'name' => 'Anaerobic Digester',
+        'machine_id' => 2,
+        'grid_x' => 4,
+        'grid_y' => 5,
+        'position_x' => 128,
+        'position_y' => 160,
+        'rotation' => 0,
+        'fixed' => true,
+        'selectable' => true,
+        'object_config' => [],
+        'notes' => null,
+    ]);
+
+    expect($created['id'])->toBe(77)
+        ->and($created['scenario_id'])->toBe(2)
+        ->and($created['object_key'])->toBe('machine_2_4_5_123');
+});
+
 it('normalizes transport classes from canonical resource rows', function () {
     Http::fake([
         'https://example.supabase.co/rest/v1/resources*' => Http::response([
@@ -106,6 +157,100 @@ it('includes scenario connections in the canonical scenario payload without pers
         ->and($scenario['scenario_resources'][0]['resource']['transport_classes'])->toBe(['conveyor'])
         ->and($scenario['scenario_connections'][0])->not->toHaveKey('direction')
         ->and($scenario['scenario_connections'][0])->not->toHaveKey('transport_class');
+});
+
+it('includes canonical machine resources on scenario object machines so placed objects expose their outputs through the scenario payload', function () {
+    Http::fake([
+        'https://example.supabase.co/rest/v1/scenarios*' => Http::response([
+            [
+                'id' => 2,
+                'stable_key' => 'scenario-2',
+                'name' => 'Scenario 2',
+                'population' => 1200,
+                'data_status' => 'live',
+                'map_image' => null,
+                'scenario_resources' => [],
+                'scenario_objects' => [
+                    [
+                        'id' => 4,
+                        'scenario_id' => 2,
+                        'object_key' => 'machine_3_-9_-5_1786712071070',
+                        'object_type' => 'machine',
+                        'name' => 'Anaerobic Digester',
+                        'machine_id' => 3,
+                        'grid_x' => -9,
+                        'grid_y' => -5,
+                        'position_x' => 0,
+                        'position_y' => 0,
+                        'rotation' => 0,
+                        'fixed' => true,
+                        'selectable' => true,
+                        'object_config' => [],
+                        'notes' => null,
+                        'machines' => [
+                            'id' => 3,
+                            'stable_key' => 'anaerobic_digester',
+                            'name' => 'Anaerobic Digester',
+                            'category' => 'Biological Processing',
+                            'image' => 'Anaerobic_digester.png',
+                            'footprint_x' => 4,
+                            'footprint_y' => 4,
+                            'machine_resources' => [
+                                [
+                                    'direction' => 'output',
+                                    'amount' => 1,
+                                    'unit' => 'm3',
+                                    'resources' => [
+                                        'id' => 18,
+                                        'name' => 'Biogas',
+                                        'description' => 'Methane-rich gas',
+                                        'category' => 'Gas',
+                                        'unit' => 'm3',
+                                        'resource_transport_classes' => [
+                                            ['transport_class' => 'gas'],
+                                        ],
+                                    ],
+                                ],
+                                [
+                                    'direction' => 'output',
+                                    'amount' => 1,
+                                    'unit' => 't',
+                                    'resources' => [
+                                        'id' => 19,
+                                        'name' => 'Digestate',
+                                        'description' => 'Digestate output',
+                                        'category' => 'Nutrient',
+                                        'unit' => 't',
+                                        'resource_transport_classes' => [
+                                            ['transport_class' => 'conveyor'],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'scenario_connections' => [],
+            ],
+        ], 200),
+    ]);
+
+    $service = new SupabaseService();
+    $scenario = $service->getScenario(2);
+    $machine = $scenario['scenario_objects'][0]['machine'];
+
+    expect($machine)->not->toBeNull()
+        ->and($machine['resources'])->toHaveCount(2)
+        ->and($machine['resources'][0])->toMatchArray([
+            'id' => 18,
+            'name' => 'Biogas',
+            'direction' => 'output',
+            'amount' => 1,
+            'unit' => 'm3',
+        ])
+        ->and($machine['resources'][0]['transport_classes'])->toBe(['gas'])
+        ->and($machine['resources'][1]['name'])->toBe('Digestate')
+        ->and($machine['resources'][1]['direction'])->toBe('output');
 });
 
 it('enforces the canonical database contract for transport classes and scenario connections where SQLite permits it', function () {

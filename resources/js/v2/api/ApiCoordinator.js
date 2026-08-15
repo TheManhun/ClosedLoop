@@ -3,6 +3,54 @@ export default class ApiCoordinator {
     this.eventBus = eventBus;
   }
 
+  _getCsrfToken() {
+    try {
+      if (typeof document !== 'undefined') {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        if (meta && meta.content) {
+          return meta.content;
+        }
+        if (document.cookie) {
+          const match = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('XSRF-TOKEN='));
+          if (match) {
+            return decodeURIComponent(match.split('=').slice(1).join('='));
+          }
+          const fallback = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('csrf_token='));
+          if (fallback) {
+            return decodeURIComponent(fallback.split('=').slice(1).join('='));
+          }
+        }
+      }
+    } catch (e) {
+      // No browser document available in tests or non-browser runtimes.
+    }
+    return null;
+  }
+
+  _buildJsonOptions(method, body, extraHeaders = {}) {
+    const csrfToken = this._getCsrfToken();
+    const headers = {
+      Accept: 'application/json',
+      ...extraHeaders,
+    };
+
+    if (body !== undefined && body !== null) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    if (csrfToken) {
+      headers['X-CSRF-TOKEN'] = csrfToken;
+      headers['X-XSRF-TOKEN'] = csrfToken;
+    }
+
+    return {
+      method,
+      credentials: 'same-origin',
+      headers,
+      ...(body !== undefined && body !== null ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
+    };
+  }
+
   initialise() {
     // Prepare any API related configuration here.
   }
@@ -11,7 +59,7 @@ export default class ApiCoordinator {
     const url = `/api/scenarios/${encodeURIComponent(id)}`;
     let resp;
     try {
-      resp = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+      resp = await fetch(url, this._buildJsonOptions('GET'));
     } catch (e) {
       const err = new Error(`ApiCoordinator.fetchScenario network error: ${e.message}`);
       err.cause = e;
@@ -42,7 +90,7 @@ export default class ApiCoordinator {
     const url = '/api/machines';
     let resp;
     try {
-      resp = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+      resp = await fetch(url, this._buildJsonOptions('GET'));
     } catch (e) {
       const err = new Error(`ApiCoordinator.fetchMachines network error: ${e.message}`);
       err.cause = e;
@@ -73,7 +121,7 @@ export default class ApiCoordinator {
     const url = '/api/resources';
     let resp;
     try {
-      resp = await fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' } });
+      resp = await fetch(url, this._buildJsonOptions('GET'));
     } catch (e) {
       const err = new Error(`ApiCoordinator.fetchResources network error: ${e.message}`);
       err.cause = e;
@@ -105,11 +153,7 @@ export default class ApiCoordinator {
     const url = `/api/scenarios/${encodeURIComponent(scenarioId)}/scenario-objects`;
     let resp;
     try {
-      resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      resp = await fetch(url, this._buildJsonOptions('POST', payload));
     } catch (e) {
       const err = new Error(`ApiCoordinator.createScenarioObject network error: ${e.message}`);
       err.cause = e;
@@ -124,8 +168,7 @@ export default class ApiCoordinator {
       throw err;
     }
     try {
-      const json = await resp.json();
-      return json;
+      return await resp.json();
     } catch (e) {
       const err = new Error(`ApiCoordinator.createScenarioObject invalid JSON: ${e.message}`);
       err.cause = e;

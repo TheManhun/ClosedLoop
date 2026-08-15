@@ -10,6 +10,8 @@ export default class UIManager {
     this._currentScenario = null;
     this._bound = {};
     this._statusEl = null;
+    this._contextBootState = 'idle';
+    this._contextBootDetail = '';
   }
 
   _getOrCreateStatusBlock(root) {
@@ -71,6 +73,13 @@ export default class UIManager {
 
     if (Array.isArray(currentScenario && currentScenario.scenario_resources)) {
       lines.push(`${currentScenario.scenario_resources.length} regional resource streams`);
+    }
+
+    if (this._contextBootState && this._contextBootState !== 'idle') {
+      lines.push(`Context: ${this._contextBootState}`);
+      if (this._contextBootDetail) {
+        lines.push(this._contextBootDetail);
+      }
     }
 
     const text = lines.join('\n');
@@ -135,23 +144,88 @@ export default class UIManager {
           try {
             this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
             this._contextPanel.initialise();
-          } catch (e) {}
+          } catch (e) {
+            // Ignore runtime-mount construction failures; the UI will continue to render without the panel.
+          }
         }
       } else {
         // Browser: dynamic import for runtime mount
         if (!this._contextPanel) {
+          this._contextBootState = 'CONTEXT_IMPORT_START';
+          this._contextBootDetail = 'dynamic import';
+          this._renderStatus();
           import('../ui/ContextPanel.js').then((mod) => {
             try {
               const ContextPanel = mod && mod.default;
+              this._contextBootState = 'CONTEXT_IMPORT_OK';
+              this._contextBootDetail = 'import resolved';
+              this._renderStatus();
               if (ContextPanel && this.eventBus && this.statusProviders.technology) {
-                this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
-                this._contextPanel.initialise();
+                this._contextBootState = 'CONTEXT_CONSTRUCTOR_START';
+                this._contextBootDetail = 'new ContextPanel';
+                this._renderStatus();
+                try {
+                  this._contextPanel = new ContextPanel({ eventBus: this.eventBus, technology: this.statusProviders.technology });
+                  this._contextBootState = 'CONTEXT_CONSTRUCTOR_OK';
+                  this._contextBootDetail = 'constructor ok';
+                  this._renderStatus();
+                } catch (e) {
+                  const message = (e && e.message) ? e.message : String(e);
+                  const stack = (e && e.stack) ? e.stack : '';
+                  this._contextBootState = 'CONTEXT_CONSTRUCTOR_FAILED';
+                  this._contextBootDetail = `${message}\n${stack}`;
+                  this._renderStatus();
+                  return;
+                }
+                try {
+                  this._contextBootState = 'CONTEXT_INITIALISE_START';
+                  this._contextBootDetail = 'initialise()';
+                  this._renderStatus();
+                  this._contextPanel.initialise();
+                  this._contextBootState = 'CONTEXT_INITIALISE_OK';
+                  this._contextBootDetail = 'initialise() ok';
+                  this._renderStatus();
+                } catch (e) {
+                  const message = (e && e.message) ? e.message : String(e);
+                  const stack = (e && e.stack) ? e.stack : '';
+                  this._contextBootState = 'CONTEXT_INITIALISE_FAILED';
+                  this._contextBootDetail = `${message}\n${stack}`;
+                  this._renderStatus();
+                }
+                const root = typeof document !== 'undefined' ? document.getElementById('closed-loop-v2-ui') : null;
+                if (root && root.querySelector && root.querySelector('.v2-context-panel')) {
+                  this._contextBootState = 'CONTEXT_DOM_MOUNTED';
+                  this._contextBootDetail = 'panel mounted';
+                  this._renderStatus();
+                } else {
+                  this._contextBootState = 'CONTEXT_DOM_NOT_MOUNTED';
+                  this._contextBootDetail = 'panel not mounted';
+                  this._renderStatus();
+                }
+              } else {
+                this._contextBootState = 'CONTEXT_IMPORT_OK_BUT_DEPENDENCIES_MISSING';
+                this._contextBootDetail = JSON.stringify({ hasCtor: !!ContextPanel, hasBus: !!this.eventBus, hasTech: !!this.statusProviders.technology });
+                this._renderStatus();
               }
-            } catch (e) {}
-          }).catch(() => {});
+            } catch (e) {
+              const message = (e && e.message) ? e.message : String(e);
+              const stack = (e && e.stack) ? e.stack : '';
+              this._contextBootState = 'CONTEXT_BOOT_FAILED';
+              this._contextBootDetail = `${message}\n${stack}`;
+              this._renderStatus();
+            }
+          }).catch((e) => {
+            const message = (e && e.message) ? e.message : String(e);
+            const stack = (e && e.stack) ? e.stack : '';
+            this._contextBootState = 'CONTEXT_IMPORT_FAILED';
+            this._contextBootDetail = `${message}\n${stack}`;
+            this._renderStatus();
+          });
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      // Ignore runtime bootstrap errors for the optional context panel.
+    }
 
     this.mounted = true;
   }

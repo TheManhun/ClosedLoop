@@ -9,6 +9,9 @@ export default class ConnectionController {
     this._resource_id = null;
     this._compatibility = [];
     this._target_object_id = null;
+    this._source_port = null;
+    this._target_port = null;
+    this._transport_class = null;
     this._placementModeActive = false;
   }
 
@@ -21,6 +24,24 @@ export default class ConnectionController {
 
       this._bound.onConnectionBegin = (payload) => this.beginConnection(payload);
       this.eventBus.on('connection:begin', this._bound.onConnectionBegin);
+
+      this._bound.onPortOutputSelected = (payload) => this.beginConnection(payload);
+      this.eventBus.on('connection:port:output:selected', this._bound.onPortOutputSelected);
+
+      this._bound.onPortInputHover = (payload) => this.handleTargetHover(payload);
+      this.eventBus.on('connection:port:input:hover', this._bound.onPortInputHover);
+
+      this._bound.onPortInputLeave = (payload) => this.clearTargetHover(payload);
+      this.eventBus.on('connection:port:input:leave', this._bound.onPortInputLeave);
+
+      this._bound.onTargetHover = (payload) => this.handleTargetHover(payload);
+      this.eventBus.on('connection:target:hover', this._bound.onTargetHover);
+
+      this._bound.onTargetClear = (payload) => this.clearTargetHover(payload);
+      this.eventBus.on('connection:target:clear', this._bound.onTargetClear);
+
+      this._bound.onTargetClick = (payload) => this.handleTargetClick(payload);
+      this.eventBus.on('connection:target:clicked', this._bound.onTargetClick);
 
       this._bound.onPlacementModeChanged = (payload) => {
         const active = !!(payload && payload.active);
@@ -64,6 +85,9 @@ export default class ConnectionController {
       resource_id: this._resource_id,
       target_object_id: this._target_object_id,
       compatible_target_ids: this.getCompatibleTargetIds(),
+      source_port: this._source_port ? { ...this._source_port } : null,
+      target_port: this._target_port ? { ...this._target_port } : null,
+      transport_class: this._transport_class || null,
       placement_mode_active: !!this._placementModeActive,
     };
   }
@@ -172,6 +196,63 @@ export default class ConnectionController {
     }
   }
 
+  _emitModeChanged() {
+    if (!this.eventBus || typeof this.eventBus.emit !== 'function') return;
+    const payload = {
+      active: !!this._active,
+      source_object_id: this._source_object_id,
+      resource_id: this._resource_id,
+      target_object_id: this._target_object_id != null ? Number(this._target_object_id) : null,
+      compatible_target_ids: this.getCompatibleTargetIds(),
+      source_port: this._source_port ? { ...this._source_port } : null,
+      target_port: this._target_port ? { ...this._target_port } : null,
+      transport_class: this._transport_class || null,
+    };
+    this.eventBus.emit('connection:mode:changed', payload);
+    this.eventBus.emit('connection:highlight:changed', payload);
+  }
+
+  handleTargetHover(payload = {}) {
+    if (!this._active) return false;
+    const targetId = payload && payload.scenario_object_id != null ? Number(payload.scenario_object_id) : null;
+    if (!Number.isFinite(targetId)) return false;
+    if (Number(targetId) === Number(this._source_object_id)) {
+      this.clearTargetHover({ scenario_object_id: targetId });
+      return false;
+    }
+    if (!this._compatibility.includes(targetId)) {
+      this.clearTargetHover({ scenario_object_id: targetId });
+      return false;
+    }
+
+    this._target_object_id = targetId;
+    if (payload && payload.world && Number.isFinite(Number(payload.world.x)) && Number.isFinite(Number(payload.world.y))) {
+      this._target_port = { x: Number(payload.world.x), y: Number(payload.world.y) };
+    }
+    this._emitModeChanged();
+    return true;
+  }
+
+  clearTargetHover(payload = {}) {
+    const targetId = payload && payload.scenario_object_id != null ? Number(payload.scenario_object_id) : null;
+    if (Number.isFinite(targetId) && this._target_object_id != null && Number(this._target_object_id) !== Number(targetId)) {
+      return false;
+    }
+    if (this._target_object_id == null) return false;
+
+    this._target_object_id = null;
+    this._target_port = null;
+    this._emitModeChanged();
+    return true;
+  }
+
+  handleTargetClick(payload = {}) {
+    if (!this._active) return false;
+    const targetId = payload && payload.scenario_object_id != null ? Number(payload.scenario_object_id) : null;
+    if (!Number.isFinite(targetId)) return false;
+    return this.confirmTarget(targetId);
+  }
+
   beginConnection(payload = {}) {
     if (this._placementModeActive) {
       if (this.eventBus && typeof this.eventBus.emit === 'function') {
@@ -185,12 +266,21 @@ export default class ConnectionController {
     }
 
     const scenario = payload && payload.scenario ? payload.scenario : this._scenario;
-    const sourceObjectId = payload && payload.source_object_id != null ? Number(payload.source_object_id) : null;
+    const sourceObjectId = payload && payload.source_object_id != null ? Number(payload.source_object_id) : (payload && payload.scenario_object_id != null ? Number(payload.scenario_object_id) : null);
     const resourceId = this._deriveResourceId(payload && payload.resource_id != null ? payload.resource_id : (payload && payload.resource ? payload.resource : null));
 
     if (!Number.isFinite(sourceObjectId) || !Number.isFinite(resourceId)) {
       return false;
     }
+
+    const transportClassSource = payload && (payload.transport_class || payload.transport_classes || null);
+    this._transport_class = Array.isArray(transportClassSource) ? String(transportClassSource[0] || '') : (typeof transportClassSource === 'string' ? transportClassSource : null);
+    if (payload && payload.world && Number.isFinite(Number(payload.world.x)) && Number.isFinite(Number(payload.world.y))) {
+      this._source_port = { x: Number(payload.world.x), y: Number(payload.world.y) };
+    } else {
+      this._source_port = null;
+    }
+    this._target_port = null;
 
     const source = this._findScenarioObject(sourceObjectId, scenario || this._scenario);
     if (!source) {
@@ -205,17 +295,18 @@ export default class ConnectionController {
     this._recalculateCompatibility();
 
     if (this.eventBus && typeof this.eventBus.emit === 'function') {
-      this.eventBus.emit('connection:mode:changed', {
+      const payload = {
         active: true,
         source_object_id: this._source_object_id,
         resource_id: this._resource_id,
+        target_object_id: null,
         compatible_target_ids: this._compatibility.slice(),
-      });
-      this.eventBus.emit('connection:highlight:changed', {
-        active: true,
-        source_object_id: this._source_object_id,
-        compatible_target_ids: this._compatibility.slice(),
-      });
+        source_port: this._source_port ? { ...this._source_port } : null,
+        target_port: this._target_port ? { ...this._target_port } : null,
+        transport_class: this._transport_class || null,
+      };
+      this.eventBus.emit('connection:mode:changed', payload);
+      this.eventBus.emit('connection:highlight:changed', payload);
     }
 
     return true;
@@ -252,19 +343,23 @@ export default class ConnectionController {
     this._resource_id = null;
     this._target_object_id = null;
     this._compatibility = [];
+    this._source_port = null;
+    this._target_port = null;
+    this._transport_class = null;
 
     if (this.eventBus && typeof this.eventBus.emit === 'function') {
-      this.eventBus.emit('connection:mode:changed', {
+      const payload = {
         active: false,
         source_object_id: null,
         resource_id: null,
+        target_object_id: null,
         compatible_target_ids: [],
-      });
-      this.eventBus.emit('connection:highlight:changed', {
-        active: false,
-        source_object_id: null,
-        compatible_target_ids: [],
-      });
+        source_port: null,
+        target_port: null,
+        transport_class: null,
+      };
+      this.eventBus.emit('connection:mode:changed', payload);
+      this.eventBus.emit('connection:highlight:changed', payload);
     }
 
     return true;
@@ -274,6 +369,9 @@ export default class ConnectionController {
     if (this.eventBus && typeof this.eventBus.off === 'function') {
       if (this._bound.onScenarioLoaded) this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded);
       if (this._bound.onConnectionBegin) this.eventBus.off('connection:begin', this._bound.onConnectionBegin);
+      if (this._bound.onTargetHover) this.eventBus.off('connection:target:hover', this._bound.onTargetHover);
+      if (this._bound.onTargetClear) this.eventBus.off('connection:target:clear', this._bound.onTargetClear);
+      if (this._bound.onTargetClick) this.eventBus.off('connection:target:clicked', this._bound.onTargetClick);
       if (this._bound.onPlacementModeChanged) this.eventBus.off('placement:mode:changed', this._bound.onPlacementModeChanged);
     }
 
@@ -289,6 +387,9 @@ export default class ConnectionController {
     this._resource_id = null;
     this._compatibility = [];
     this._target_object_id = null;
+    this._source_port = null;
+    this._target_port = null;
+    this._transport_class = null;
     this._placementModeActive = false;
   }
 }

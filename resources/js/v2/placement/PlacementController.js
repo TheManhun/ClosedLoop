@@ -46,6 +46,14 @@ export default class PlacementController {
       this.eventBus.on('technology:selected', this._bound.onTechnologySelected);
       this._bound.onScenarioLoaded = (scenario) => this._onScenarioLoaded(scenario);
       this.eventBus.on('scenario:loaded', this._bound.onScenarioLoaded);
+      this._bound.onPlacementCommitted = () => {
+        this._isSubmitting = false;
+      };
+      this.eventBus.on('placement:committed', this._bound.onPlacementCommitted);
+      this._bound.onPlacementFailed = () => {
+        this._isSubmitting = false;
+      };
+      this.eventBus.on('placement:failed', this._bound.onPlacementFailed);
     }
 
     if (this._scene && this._scene.input && typeof this._scene.input.on === 'function') {
@@ -170,12 +178,11 @@ export default class PlacementController {
       notes: null,
     };
 
-    if (this.eventBus && typeof this.eventBus.emit === 'function') {
-      this.eventBus.emit('placement:confirm', { ...payload, machine, preview: this.getPreviewState() });
-    }
-
     if (this._runtimeEventConsumerInstalled) {
       this._isSubmitting = true;
+      if (this.eventBus && typeof this.eventBus.emit === 'function') {
+        this.eventBus.emit('placement:confirm', { ...payload, machine, preview: this.getPreviewState() });
+      }
       return true;
     }
 
@@ -632,6 +639,12 @@ export default class PlacementController {
     }
     if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onScenarioLoaded) {
       this.eventBus.off('scenario:loaded', this._bound.onScenarioLoaded);
+    }
+    if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onPlacementCommitted) {
+      this.eventBus.off('placement:committed', this._bound.onPlacementCommitted);
+    }
+    if (this.eventBus && typeof this.eventBus.off === 'function' && this._bound.onPlacementFailed) {
+      this.eventBus.off('placement:failed', this._bound.onPlacementFailed);
     }
 
     if (this._scene && this._scene.input && typeof this._scene.input.off === 'function' && this._bound.onPointerMove) {

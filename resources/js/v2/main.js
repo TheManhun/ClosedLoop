@@ -8,7 +8,49 @@ import UIManager from './ui/UIManager.js';
 import Renderer from './renderer/Renderer.js';
 import ToolboxController from './toolbox/ToolboxController.js';
 import ScenarioLoader from './scenarios/ScenarioLoader.js';
+import LocalScenarioStore from './store/LocalScenarioStore.js';
 import App from './App.js';
+
+export function handleLocalPlacement({ eventBus, localScenarioStore, payload }) {
+  if (!payload || !payload.scenario_id || !payload.machine_id) {
+    throw new Error('handleLocalPlacement requires scenario_id and machine_id');
+  }
+
+  if (!localScenarioStore || typeof localScenarioStore.addObject !== 'function') {
+    throw new Error('handleLocalPlacement requires a LocalScenarioStore instance');
+  }
+
+  const created = localScenarioStore.addObject({
+    machine_id: payload.machine_id,
+    grid_x: payload.grid_x,
+    grid_y: payload.grid_y,
+    rotation: payload.rotation ?? 0,
+    object_config: payload.object_config || {},
+    name: payload.name || `Machine ${payload.machine_id}`,
+  });
+
+  const runtime = localScenarioStore.getRuntimeScenario();
+  const match = Array.isArray(runtime && runtime.scenario_objects)
+    ? runtime.scenario_objects.find((obj) => String((obj && (obj.local_id ?? obj.id)) ?? '') === String(created.id))
+    : null;
+
+  if (eventBus && typeof eventBus.emit === 'function' && match) {
+    const selectionId = Number.isFinite(Number(match.id ?? created.id)) ? Number(match.id ?? created.id) : String(match.id ?? created.id);
+    eventBus.emit('selection:request', {
+      kind: 'object',
+      id: selectionId,
+      instance_key: match.object_key ?? (match.local_id ?? created.id),
+      meta: match,
+      world: {
+        x: Number(match.grid_x ?? 0) * 64,
+        y: Number(match.grid_y ?? 0) * 64,
+      },
+      _pointerId: null,
+    });
+  }
+
+  return created;
+}
 
 export async function autoSelectPlacedObject({ eventBus, scenarioLoader }, created, scenarioId = null) {
   if (!eventBus || typeof eventBus.emit !== 'function') return false;
@@ -25,7 +67,7 @@ export async function autoSelectPlacedObject({ eventBus, scenarioLoader }, creat
   try {
     const scenario = await scenarioLoader.load(resolvedScenarioId);
     const match = Array.isArray(scenario && scenario.scenario_objects)
-      ? scenario.scenario_objects.find((obj) => Number(obj && obj.id) === Number(created.id))
+      ? scenario.scenario_objects.find((obj) => String((obj && (obj.local_id ?? obj.id)) ?? '') === String(created.id))
       : null;
 
     if (!match) {
@@ -37,10 +79,11 @@ export async function autoSelectPlacedObject({ eventBus, scenarioLoader }, creat
       return false;
     }
 
+    const selectionId = Number.isFinite(Number(match.id ?? created.id)) ? Number(match.id ?? created.id) : String(match.id ?? created.id);
     eventBus.emit('selection:request', {
       kind: 'object',
-      id: Number(match.id),
-      instance_key: match.object_key ?? null,
+      id: selectionId,
+      instance_key: match.object_key ?? (match.local_id ?? created.id),
       meta: match,
       world: {
         x: Number(match.grid_x ?? 0) * 64,
@@ -64,19 +107,33 @@ export async function run() {
   // Bootstrap sequence (Stage 0) — no gameplay or simulation implementation here.
   const eventBus = new EventBus();
 
-
   const api = new ApiCoordinator({ eventBus });
   const dataLoader = new DataLoader({ apiCoordinator: api });
-  const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus });
+  const localScenarioStore = new LocalScenarioStore({ eventBus, templateId: 2, dbName: 'closed-loop-v2', storeName: 'local_saves' });
+  const scenarioLoader = new ScenarioLoader({ dataLoader, eventBus, localScenarioStore });
 
   eventBus.on('placement:confirm', async (payload) => {
-    if (!payload || !payload.scenario_id || !payload.machine_id) return;
     try {
-      const created = await api.createScenarioObject(payload);
-      if (eventBus && typeof eventBus.emit === 'function') {
-        eventBus.emit('placement:committed', { ...payload, created });
+      if (!payload) {
+        return;
       }
-      await autoSelectPlacedObject({ eventBus, scenarioLoader }, created, payload.scenario_id);
+      if (!payload.scenario_id || !payload.machine_id) {
+        return;
+      }
+
+      const created = handleLocalPlacement({ eventBus, localScenarioStore, payload });
+      if (eventBus && typeof eventBus.emit === 'function') {
+        eventBus.emit('placement:committed', { ...payload, created, persisted: false });
+      }
+
+      localScenarioStore.autosave().catch((error) => {
+        if (eventBus && typeof eventBus.emit === 'function') {
+          eventBus.emit('local:autosave:error', {
+            error,
+            save: localScenarioStore.getSaveRecord(),
+          });
+        }
+      });
     } catch (error) {
       if (eventBus && typeof eventBus.emit === 'function') {
         eventBus.emit('placement:failed', { payload, error });
